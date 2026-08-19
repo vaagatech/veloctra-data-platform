@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,21 +10,24 @@
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {
-      --bg: #090a10;
-      --surface: #10131f;
-      --surface2: #181c2d;
-      --surface3: #22273e;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-accent: rgba(99, 102, 241, 0.3);
-      --accent: #6366f1;
-      --accent-glow: rgba(99, 102, 241, 0.25);
-      --accent2: #8b5cf6;
-      --cyan: #06b6d4;
-      --emerald: #10b981;
-      --amber: #f59e0b;
-      --rose: #f43f5e;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --surface3: #e2e8f0;
+      --border: #e2e8f0;
+      --border-hover: #cbd5e1;
+      --border-accent: rgba(79, 70, 229, 0.3);
+      --accent: #4f46e5;
+      --accent-dark: #4338ca;
+      --accent-light: #eef2ff;
+      --accent-glow: rgba(79, 70, 229, 0.15);
+      --cyan: #0284c7;
+      --emerald: #059669;
+      --emerald-light: #ecfdf5;
+      --amber: #d97706;
+      --text-heading: #0f172a;
+      --text-body: #334155;
+      --text-muted: #64748b;
       --mono: 'JetBrains Mono', monospace;
     }
 
@@ -33,7 +36,7 @@
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
-      color: var(--text);
+      color: var(--text-body);
       line-height: 1.6;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
@@ -43,9 +46,8 @@
       position: fixed;
       inset: 0;
       background:
-        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(99, 102, 241, 0.12), transparent 70%),
-        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(6, 182, 212, 0.08), transparent 70%),
-        radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.04), transparent 60%);
+        radial-gradient(ellipse 80% 50% at 20% 5%, rgba(79, 70, 229, 0.06), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 90%, rgba(2, 132, 199, 0.05), transparent 60%);
       pointer-events: none;
       z-index: 0;
     }
@@ -56,13 +58,14 @@
       top: 0;
       z-index: 100;
       height: 68px;
-      background: rgba(16, 19, 31, 0.88);
-      backdrop-filter: blur(20px);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 36px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
 
     .brand {
@@ -73,7 +76,7 @@
       font-size: 18px;
       letter-spacing: -0.02em;
       text-decoration: none;
-      color: var(--text);
+      color: var(--text-heading);
     }
 
     .brand-icon {
@@ -85,13 +88,14 @@
       align-items: center;
       justify-content: center;
       font-size: 20px;
-      box-shadow: 0 0 25px var(--accent-glow);
+      color: #fff;
+      box-shadow: 0 4px 12px var(--accent-glow);
     }
 
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 24px;
       list-style: none;
     }
 
@@ -104,7 +108,8 @@
     }
 
     .nav-links a:hover, .nav-links a.active {
-      color: var(--text);
+      color: var(--accent);
+      font-weight: 600;
     }
 
     .github-btn {
@@ -113,17 +118,17 @@
       gap: 8px;
       padding: 8px 16px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--surface2);
       border: 1px solid var(--border);
-      color: var(--text) !important;
+      color: var(--text-heading) !important;
       font-weight: 600;
       font-size: 13px;
       transition: all 0.2s;
     }
 
     .github-btn:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: var(--surface3);
+      border-color: var(--border-hover);
     }
 
     /* Container Grid */
@@ -145,6 +150,7 @@
       top: 68px;
       height: calc(100vh - 68px);
       overflow-y: auto;
+      background: #fafafa;
     }
 
     .menu-group { margin-bottom: 28px; }
@@ -153,7 +159,7 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: #64748b;
+      color: var(--text-muted);
       margin-bottom: 12px;
       padding-left: 12px;
     }
@@ -164,24 +170,23 @@
       gap: 10px;
       padding: 10px 12px;
       border-radius: 8px;
-      color: var(--text-muted);
+      color: var(--text-body);
       text-decoration: none;
       font-size: 13.5px;
       font-weight: 500;
       margin-bottom: 3px;
-      cursor: pointer;
       transition: all 0.15s;
     }
 
     .menu-item:hover {
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--text);
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--text-heading);
     }
 
     .menu-item.active {
-      background: rgba(99, 102, 241, 0.15);
+      background: var(--accent-light);
       border-left: 3px solid var(--accent);
-      color: #a5b4fc;
+      color: var(--accent-dark);
       font-weight: 600;
     }
 
@@ -195,19 +200,19 @@
     .hero {
       padding: 44px 48px;
       border-radius: 20px;
-      background: linear-gradient(135deg, rgba(24, 28, 45, 0.9), rgba(16, 19, 31, 0.7));
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
       border: 1px solid var(--border);
       margin-bottom: 40px;
       position: relative;
       overflow: hidden;
-      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
     }
 
     .hero::after {
       content: '';
       position: absolute;
-      top: 0; right: 0; width: 300px; height: 300px;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.15), transparent 70%);
+      top: 0; right: 0; width: 280px; height: 280px;
+      background: radial-gradient(circle, rgba(79, 70, 229, 0.08), transparent 70%);
       pointer-events: none;
     }
 
@@ -216,13 +221,11 @@
       font-weight: 900;
       letter-spacing: -0.03em;
       margin-bottom: 12px;
-      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--text-heading);
     }
 
     .hero p {
-      color: var(--text-muted);
+      color: var(--text-body);
       font-size: 16px;
       max-width: 720px;
       line-height: 1.7;
@@ -243,21 +246,21 @@
       border-radius: 100px;
       font-size: 12px;
       font-weight: 700;
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      color: #a5b4fc;
+      background: var(--accent-light);
+      border: 1px solid rgba(79, 70, 229, 0.2);
+      color: var(--accent-dark);
     }
 
     .badge.emerald {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.3);
-      color: #6ee7b7;
+      background: var(--emerald-light);
+      border-color: rgba(5, 150, 105, 0.2);
+      color: var(--emerald);
     }
 
     .badge.cyan {
-      background: rgba(6, 182, 212, 0.12);
-      border-color: rgba(6, 182, 212, 0.3);
-      color: #67e8f9;
+      background: #f0f9ff;
+      border-color: rgba(2, 132, 199, 0.2);
+      color: var(--cyan);
     }
 
     /* Content Cards & Sections */
@@ -266,7 +269,7 @@
       font-weight: 800;
       letter-spacing: -0.02em;
       margin: 40px 0 20px;
-      color: var(--text);
+      color: var(--text-heading);
       display: flex;
       align-items: center;
       gap: 10px;
@@ -285,12 +288,13 @@
       border-radius: 14px;
       padding: 24px;
       transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     }
 
     .card:hover {
-      border-color: var(--border-accent);
+      border-color: var(--accent);
       transform: translateY(-2px);
-      box-shadow: 0 10px 25px -10px rgba(99, 102, 241, 0.2);
+      box-shadow: 0 12px 24px -8px rgba(79, 70, 229, 0.12);
     }
 
     .card-icon {
@@ -302,7 +306,7 @@
       font-size: 17px;
       font-weight: 700;
       margin-bottom: 8px;
-      color: var(--text);
+      color: var(--text-heading);
     }
 
     .card p {
@@ -318,6 +322,7 @@
       border-radius: 14px;
       overflow-x: auto;
       margin: 24px 0 40px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     }
 
     table {
@@ -331,28 +336,29 @@
       background: var(--surface2);
       padding: 14px 20px;
       font-weight: 700;
-      color: var(--text);
+      color: var(--text-heading);
       border-bottom: 1px solid var(--border);
     }
 
     td {
       padding: 14px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      color: #cbd5e1;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-body);
     }
 
     tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fcfcfd; }
 
     .highlight-cell {
-      color: #67e8f9;
-      font-weight: 600;
-      background: rgba(6, 182, 212, 0.05);
+      color: var(--accent-dark);
+      font-weight: 700;
+      background: var(--accent-light);
     }
 
     /* Code Block Styling */
     pre {
-      background: #090a12;
-      border: 1px solid var(--border);
+      background: #0f172a;
+      border: 1px solid #1e293b;
       border-radius: 14px;
       padding: 20px 24px;
       overflow-x: auto;
@@ -360,23 +366,25 @@
       font-family: var(--mono);
       font-size: 13.5px;
       line-height: 1.7;
-      color: #e2e8f0;
-      box-shadow: 0 10px 25px -10px rgba(0, 0, 0, 0.5);
+      color: #f8fafc;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     }
 
     code {
       font-family: var(--mono);
       font-size: 13px;
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--surface2);
       padding: 2px 6px;
       border-radius: 5px;
-      color: #38bdf8;
+      color: var(--accent-dark);
+      font-weight: 600;
     }
 
     pre code {
       background: transparent;
       padding: 0;
-      color: inherit;
+      color: #e2e8f0;
+      font-weight: 400;
     }
 
     /* Mermaid Container */
@@ -387,6 +395,7 @@
       padding: 24px;
       margin: 24px 0;
       text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     }
 
     /* Action Buttons */
@@ -410,28 +419,27 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
       color: #fff;
-      box-shadow: 0 0 20px var(--accent-glow);
+      box-shadow: 0 4px 14px var(--accent-glow);
     }
 
     .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 0 30px rgba(99, 102, 241, 0.4);
+      box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3);
     }
 
     .btn-secondary {
-      background: var(--surface2);
+      background: var(--surface);
       border: 1px solid var(--border);
-      color: var(--text);
+      color: var(--text-heading);
     }
 
     .btn-secondary:hover {
-      background: var(--surface3);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: var(--surface2);
+      border-color: var(--border-hover);
     }
 
-    /* Responsive */
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
       .sidebar { display: none; }
@@ -466,9 +474,7 @@
     </ul>
   </nav>
 
-  <!-- Main Grid -->
   <div class="container">
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="menu-group">
         <div class="menu-title">Platform Guides</div>
@@ -498,7 +504,6 @@
       </div>
     </aside>
 
-    <!-- Main Content -->
     <main class="content">
       <!-- Hero -->
       <div class="hero">
@@ -687,16 +692,16 @@ graph TD
   <script>
     mermaid.initialize({
       startOnLoad: true,
-      theme: 'dark',
+      theme: 'default',
       themeVariables: {
-        darkMode: true,
-        background: '#10131f',
-        primaryColor: '#6366f1',
-        primaryTextColor: '#f8fafc',
-        primaryBorderColor: 'rgba(99, 102, 241, 0.4)',
-        lineColor: '#06b6d4',
-        secondaryColor: '#181c2d',
-        tertiaryColor: '#22273e'
+        darkMode: false,
+        background: '#ffffff',
+        primaryColor: '#eef2ff',
+        primaryTextColor: '#0f172a',
+        primaryBorderColor: '#4f46e5',
+        lineColor: '#0284c7',
+        secondaryColor: '#f8fafc',
+        tertiaryColor: '#f1f5f9'
       }
     });
   </script>
