@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veloctra-resilience"
+version = "1.0.0"
+description = "AWS Full Jitter Exponential Backoff & Circuit Breaker Automaton for Veloctra Data Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "veloctra-core"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["veloctra_resilience*"]

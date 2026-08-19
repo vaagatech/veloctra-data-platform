@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veloctra-monorepo"
+version = "1.0.0"
+description = "Veloctra Data Platform Monorepo"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pyright]
+include = ["packages", "apps", "tests"]
+extraPaths = [
+    "packages/veloctra-core",
+    "packages/veloctra-security",
+    "packages/veloctra-state",
+    "packages/veloctra-resilience",
+    "packages/veloctra-connectors",
+    "packages/veloctra-transformers",
+    "packages/veloctra-orchestrator",
+    "packages/veloctra-api"
+]

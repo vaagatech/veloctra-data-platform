@@ -1,0 +1,94 @@
+{
+  "include": [
+    "packages",
+    "apps",
+    "tests"
+  ],
+  "extraPaths": [
+    "packages/veloctra-core",
+    "packages/veloctra-security",
+    "packages/veloctra-state",
+    "packages/veloctra-resilience",
+    "packages/veloctra-connectors",
+    "packages/veloctra-transformers",
+    "packages/veloctra-orchestrator",
+    "packages/veloctra-api"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "packages/veloctra-core",
+      "extraPaths": [
+        "packages/veloctra-core"
+      ]
+    },
+    {
+      "root": "packages/veloctra-security",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security"
+      ]
+    },
+    {
+      "root": "packages/veloctra-state",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security",
+        "packages/veloctra-state"
+      ]
+    },
+    {
+      "root": "packages/veloctra-resilience",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-resilience"
+      ]
+    },
+    {
+      "root": "packages/veloctra-connectors",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security",
+        "packages/veloctra-resilience",
+        "packages/veloctra-connectors"
+      ]
+    },
+    {
+      "root": "packages/veloctra-transformers",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security",
+        "packages/veloctra-connectors",
+        "packages/veloctra-transformers"
+      ]
+    },
+    {
+      "root": "packages/veloctra-orchestrator",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security",
+        "packages/veloctra-state",
+        "packages/veloctra-resilience",
+        "packages/veloctra-connectors",
+        "packages/veloctra-transformers",
+        "packages/veloctra-orchestrator"
+      ]
+    },
+    {
+      "root": "packages/veloctra-api",
+      "extraPaths": [
+        "packages/veloctra-core",
+        "packages/veloctra-security",
+        "packages/veloctra-state",
+        "packages/veloctra-resilience",
+        "packages/veloctra-connectors",
+        "packages/veloctra-transformers",
+        "packages/veloctra-orchestrator",
+        "packages/veloctra-api"
+      ]
+    }
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Darwin"
+}

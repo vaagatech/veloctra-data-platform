@@ -1,0 +1,35 @@
+pipeline_id: postgres_to_mongo
+project_id: finance_prod_workspace
+version: 1
+description: "Extracts claims from PostgreSQL, applies vectorised Arrow transformations and Decimal sanitization, and streams into MongoDB."
+
+settings:
+  chunk_size: 5000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+  dlq_enabled: true
+  circuit_breaker_enabled: true
+
+sources:
+  - name: pg_healthcare_claims
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    query: "SELECT * FROM raw_claim_benef"
+    chunk_size: 5000
+
+transformations:
+  - type: rename_field
+    field: desynpuf_id
+    new_name: beneficiary_id
+  - type: rename_field
+    field: clm_id
+    new_name: claim_id
+
+destinations:
+  - name: mongo_claims_collection
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: claim_beneficiaries
+    batch_size: 5000

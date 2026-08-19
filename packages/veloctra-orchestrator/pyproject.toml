@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veloctra-orchestrator"
+version = "1.0.0"
+description = "Pipeline Controller & MemoryGuard adaptive memory manager for Veloctra Data Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "veloctra-core",
+    "veloctra-security",
+    "veloctra-state",
+    "veloctra-resilience",
+    "veloctra-connectors",
+    "veloctra-transformers",
+    "psutil>=6.0.0",
+    "pyarrow>=17.0.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["veloctra_orchestrator*"]

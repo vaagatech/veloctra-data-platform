@@ -1,0 +1,24 @@
+pipeline_id: postgres_to_csv
+project_id: finance_prod_workspace
+version: 1
+description: "Extracts claims from PostgreSQL and streams partitioned lakehouse CSV / Parquet files to local storage."
+
+settings:
+  chunk_size: 10000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+  dlq_enabled: true
+
+sources:
+  - name: pg_healthcare_claims
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    query: "SELECT * FROM raw_claim_benef"
+    chunk_size: 10000
+
+destinations:
+  - name: local_lakehouse_export
+    type: file
+    output_dir: "./output_claims_lakehouse"
+    format: csv
+    batch_size: 10000

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enterprise ETL Engine — Documentation & Architecture Portal</title>
+  <meta name="description" content="Official Architecture, Usage, and Setup documentation for the Enterprise ETL Engine Monorepo." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --surface: #11131f;
+      --surface2: #191c2e;
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --accent2: #8b5cf6;
+      --emerald: #10b981;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Background Mesh */
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(99, 102, 241, 0.12), transparent 70%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139, 92, 246, 0.1), transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top Navigation */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: 64px;
+      background: rgba(17, 19, 31, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--text);
+    }
+
+    /* Layout */
+    .container {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      max-width: 1400px;
+      margin: 0 auto;
+      min-height: calc(100vh - 64px);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      padding: 32px 20px;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 64px;
+      height: calc(100vh - 64px);
+      overflow-y: auto;
+    }
+
+    .menu-group { margin-bottom: 24px; }
+    .menu-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .menu-item {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+    }
+
+    .menu-item.active {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+
+    /* Main Content Area */
+    .content {
+      padding: 40px 48px;
+      max-width: 960px;
+    }
+
+    /* Hero Header */
+    .hero {
+      padding: 40px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(25, 28, 46, 0.8), rgba(17, 19, 31, 0.6));
+      border: 1px solid var(--border);
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 680px;
+      line-height: 1.7;
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: #a5b4fc;
+    }
+
+    /* Markdown Render Styling */
+    .markdown-body {
+      font-size: 15px;
+      color: #cbd5e1;
+    }
+
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+      color: var(--text);
+      letter-spacing: -0.02em;
+      margin-top: 32px;
+      margin-bottom: 16px;
+    }
+
+    .markdown-body h2 {
+      font-size: 22px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .markdown-body h3 { font-size: 17px; }
+
+    .markdown-body p { margin-bottom: 16px; }
+
+    .markdown-body code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e2e8f0;
+    }
+
+    .markdown-body pre {
+      background: #0d0e16;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+
+    .markdown-body pre code {
+      background: transparent;
+      padding: 0;
+      font-size: 13px;
+      color: #a5b4fc;
+    }
+
+    .markdown-body ul, .markdown-body ol {
+      padding-left: 24px;
+      margin-bottom: 20px;
+    }
+
+    .markdown-body li { margin-bottom: 6px; }
+
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 14px;
+    }
+
+    .markdown-body th {
+      background: var(--surface2);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .markdown-body td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <!-- Top Navbar -->
+  <nav class="nav">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <span>Enterprise ETL Engine</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#" class="active">Documentation</a></li>
+      <li><a href="https://github.com" target="_blank">GitHub Repository ↗</a></li>
+    </ul>
+  </nav>
+
+  <!-- Main Grid -->
+  <div class="container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="menu-group">
+        <div class="menu-title">Overview</div>
+        <a class="menu-item active" onclick="loadDoc('architecture')">Architecture Blueprint</a>
+        <a class="menu-item" onclick="loadDoc('setup')">Setup & Deployment</a>
+        <a class="menu-item" onclick="loadDoc('usage')">Usage & Monorepo API</a>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-title">Packages</div>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-core</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-security</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-state</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-resilience</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-connectors</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-transformers</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-orchestrator</a>
+        <a class="menu-item" onclick="loadDoc('architecture')">etl-api</a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="content">
+      <div class="hero">
+        <h1>Enterprise Production Architecture</h1>
+        <p>Hardened, modular Python/Node monorepo platform with vectorised PyArrow/Polars transforms, deterministic FSM, and real-time React UI console.</p>
+        <div class="badge-bar">
+          <span class="badge">Monorepo Packages</span>
+          <span class="badge">119,000+ rows/sec</span>
+          <span class="badge">React + TypeScript</span>
+        </div>
+      </div>
+
+      <div id="doc-render" class="markdown-body">
+        <p style="color:var(--muted)">Loading documentation...</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const DOCS = {
+      architecture: `docs/architecture.md`,
+      setup: `docs/setup.md`,
+      usage: `docs/usage.md`
+    };
+
+    async function loadDoc(key) {
+      document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+      event?.target?.classList.add('active');
+
+      const renderEl = document.getElementById('doc-render');
+      try {
+        const path = DOCS[key] || DOCS.architecture;
+        const res = await fetch(path);
+        if (!res.ok) throw new Error('Failed to load ' + path);
+        const text = await res.text();
+        renderEl.innerHTML = marked.parse(text);
+      } catch (err) {
+        renderEl.innerHTML = '<p style="color:#ef4444">Failed to load documentation file: ' + err.message + '</p>';
+      }
+    }
+
+    // Initial load
+    loadDoc('architecture');
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+pipeline_id: csv_to_postgres
+project_id: finance_prod_workspace
+version: 1
+description: "Streams claims and beneficiary data directly from compressed CSV zip archive into PostgreSQL with MemoryGuard governance."
+
+settings:
+  chunk_size: 10000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+  dlq_enabled: true
+  circuit_breaker_enabled: true
+
+sources:
+  - name: raw_claims_zip_file
+    type: file
+    format: zip
+    path: "/Users/karthiksp/projects/etl-sql-nosql/test_data/archive.zip"
+    inner_filename: "RawClaimBenef.csv"
+    delimiter: ","
+    has_header: true
+    chunk_size: 10000
+
+destinations:
+  - name: pg_raw_claim_benef
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    table: raw_claim_benef
+    batch_size: 10000

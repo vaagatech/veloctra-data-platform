@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veloctra-state"
+version = "1.0.0"
+description = "Deterministic FSM State Machine & SQLite WAL State Store for Veloctra Data Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "veloctra-core",
+    "veloctra-security",
+    "aiosqlite>=0.20.0",
+    "jsonschema>=4.23.0",
+    "PyYAML>=6.0.2",
+    "cryptography>=43.0.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["veloctra_state*"]

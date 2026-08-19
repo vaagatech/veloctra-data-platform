@@ -1,0 +1,97 @@
+# ==============================================================================
+# Veloctra Data Platform — Git Ignore Configuration
+# ==============================================================================
+
+# ── Environment & Security Secrets ───────────────────────────────────────────
+.env
+*.env
+*.pem
+*.key
+
+# ── Python Build & Bytecode ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Python Virtual Environments ──────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Node.js & React UI ────────────────────────────────────────────────────────
+node_modules/
+apps/management-ui/node_modules/
+apps/management-ui/dist/
+
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Test & Coverage Artifacts ─────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+
+# ── Databases & Persistence State ────────────────────────────────────────────
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+state.db*
+demo_state.db*
+benchmark_state.db*
+benchmark_large.db*
+demo_sql_source.db*
+
+# ── Application Runtime Logs & PIDs ──────────────────────────────────────────
+*.log
+app.log
+app.pid
+
+# ── Demo & Output Directories ─────────────────────────────────────────────────
+demo_parquet_output/
+benchmark_output/
+config_store/
+
+# ── OS & IDE Metadata ─────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+test_data/
+/etl-sql-nosql.iml
+/output_claims_lakehouse

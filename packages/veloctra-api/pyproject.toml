@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veloctra-api"
+version = "1.0.0"
+description = "FastAPI & WebSocket application layer for Veloctra Data Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "veloctra-core",
+    "veloctra-security",
+    "veloctra-state",
+    "veloctra-resilience",
+    "veloctra-connectors",
+    "veloctra-transformers",
+    "veloctra-orchestrator",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.6",
+    "structlog>=24.4.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["veloctra_api*"]
