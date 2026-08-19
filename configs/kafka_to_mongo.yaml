@@ -1,0 +1,27 @@
+pipeline_id: kafka_to_mongo_claims
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
+
+sources:
+  - name: kafka_claims_consumer
+    type: kafka
+    bootstrap_servers: "localhost:9092"
+    topic: "hospital_claims_topic"
+    group_id: "veloctra-claims-ingestor"
+    offset_action: "process_new_only"
+    chunk_size: 5000
+
+transforms:
+  - type: rename_column
+    params:
+      old_name: "claim_num"
+      new_name: "claim_id"
+
+destinations:
+  - name: mongodb_claims_dw
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: processed_claims
+    upsert_key: "claim_id"

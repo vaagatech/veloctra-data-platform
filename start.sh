@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$SCRIPT_DIR/app.pid"
 LOG_FILE="$SCRIPT_DIR/app.log"
-PORT="${PORT:-8000}"
+PORT="${PORT:-8008}"
 
 echo "=================================================================="
 echo " ⚡ Veloctra Engine — Enterprise ETL Platform Startup"

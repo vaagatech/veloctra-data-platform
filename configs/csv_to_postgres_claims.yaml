@@ -4,7 +4,8 @@
 # ==============================================================================
 
 pipeline_id: csv_to_postgres_claims
-tenant_id: healthcare_enterprise
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
 version: 1
 description: "Streams claims and beneficiary data directly from compressed CSV zip archive into PostgreSQL with vectorised type coercion and MemoryGuard governance."
 

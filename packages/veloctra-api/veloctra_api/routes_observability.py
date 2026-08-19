@@ -10,6 +10,11 @@ import gc
 import logging
 import math
 import time
+import os
+import io
+import csv
+import zipfile
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 import psutil
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -20,10 +25,38 @@ from veloctra_core.settings import get_settings
 from veloctra_resilience.circuit_breaker import circuit_registry
 from veloctra_security.rbac import Role, require_role
 from veloctra_security.security import TokenPayload
+from veloctra_state.state_store import StateStore
+
+from fastapi.responses import PlainTextResponse
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(tags=["Observability & Analytics"])
+
+
+@router.get("/metrics", response_class=PlainTextResponse)
+async def get_prometheus_metrics():
+    """Exposes Prometheus scrapeable metrics for Kubernetes and monitoring engines."""
+    mem = psutil.virtual_memory()
+    cpu = psutil.cpu_percent(interval=None)
+    proc = psutil.Process()
+    proc_mem = proc.memory_info()
+
+    lines = [
+        "# HELP veloctra_system_memory_percent Current system memory usage percentage",
+        "# TYPE veloctra_system_memory_percent gauge",
+        f"veloctra_system_memory_percent {mem.percent}",
+        "# HELP veloctra_system_cpu_percent Current system CPU usage percentage",
+        "# TYPE veloctra_system_cpu_percent gauge",
+        f"veloctra_system_cpu_percent {cpu}",
+        "# HELP veloctra_process_memory_rss_bytes Resident memory used by Veloctra process in bytes",
+        "# TYPE veloctra_process_memory_rss_bytes gauge",
+        f"veloctra_process_memory_rss_bytes {proc_mem.rss}",
+        "# HELP veloctra_process_threads Number of active OS threads in Veloctra process",
+        "# TYPE veloctra_process_threads gauge",
+        f"veloctra_process_threads {proc.num_threads()}",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 @router.get("/metrics/live")
@@ -226,19 +259,132 @@ async def discover_schema_tables(
     token: TokenPayload = Depends(require_role(Role.SUPER_ADMIN, Role.PROJECT_ADMIN, Role.DEVELOPER)),
 ):
     """Dynamically inspects N tables, column fields, data types, and primary key relationships from source system."""
-    conn_str = body.connection_string.lower()
+    raw_conn = (body.connection_string or "").strip()
+    if not raw_conn:
+        return {"status": "error", "tables": [], "message": "Empty connection string"}
 
-    # Dynamic SQLite real database inspection
-    if "sqlite" in conn_str or "demo_source_nm.db" in conn_str:
-        import sqlite3, os
-        db_file = "demo_source_nm.db" if "demo_source_nm.db" in conn_str else conn_str.replace("sqlite:///", "")
+    conn_str = raw_conn
+    # If connection_string is actually a connection ID, look up its URL in StateStore:
+    if not ("://" in conn_str or os.path.exists(conn_str) or "/" in conn_str or "\\" in conn_str):
+        try:
+            store = StateStore()
+            conns = await store.get_connections(token.tenant_id)
+            match = next((c for c in conns if c.get("id") == conn_str or c.get("name") == conn_str), None)
+            if match and match.get("url"):
+                conn_str = match["url"]
+        except Exception as e:
+            logger.warning("[SchemaDiscover] Could not resolve connection ID: %s", e)
+
+    discovered_tables: List[Dict[str, Any]] = []
+
+    # 1. PostgreSQL inspection
+    if "postgresql" in conn_str or "asyncpg" in conn_str:
+        import asyncpg
+        dsn = conn_str.replace("postgresql+asyncpg://", "postgresql://")
+        try:
+            conn = await asyncpg.connect(dsn=dsn, timeout=5)
+            tables_res = await conn.fetch("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """)
+            for row in tables_res:
+                tbl = row["table_name"]
+                cols_res = await conn.fetch("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' AND table_name = $1
+                    ORDER BY ordinal_position
+                """, tbl)
+                cols = [c["column_name"] for c in cols_res]
+                
+                pk_res = await conn.fetch("""
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                      AND tc.table_schema = kcu.table_schema
+                    WHERE tc.constraint_type = 'PRIMARY KEY'
+                      AND tc.table_schema = 'public'
+                      AND tc.table_name = $1
+                """, tbl)
+                pks = [p["column_name"] for p in pk_res]
+
+                try:
+                    r_cnt = await conn.fetchval(f'SELECT COUNT(*) FROM "{tbl}"')
+                except Exception:
+                    r_cnt = 0
+
+                discovered_tables.append({
+                    "table_name": tbl,
+                    "rows_count": r_cnt or 0,
+                    "columns": cols,
+                    "primary_keys": pks,
+                    "foreign_keys": []
+                })
+            await conn.close()
+            if discovered_tables:
+                return {
+                    "status": "success",
+                    "connection": conn_str,
+                    "total_tables_found": len(discovered_tables),
+                    "tables": discovered_tables,
+                    "recommendation": f"Discovered {len(discovered_tables)} PostgreSQL table(s).",
+                }
+        except Exception as err:
+            logger.warning("[SchemaDiscover] PostgreSQL connection failed (%s): %s", conn_str, err)
+
+    # 2. File / CSV / ZIP / Parquet inspection
+    file_path = conn_str.replace("file://", "").strip()
+    if os.path.exists(file_path):
+        if file_path.endswith(".zip") or zipfile.is_zipfile(file_path):
+            with zipfile.ZipFile(file_path, "r") as zf:
+                for name in zf.namelist():
+                    if name.endswith(".csv") and not name.startswith("__MACOSX"):
+                        tbl_name = os.path.splitext(os.path.basename(name))[0].lower()
+                        with zf.open(name) as f:
+                            sample_lines = [f.readline().decode("utf-8", errors="ignore") for _ in range(5)]
+                            reader = csv.reader(io.StringIO("".join(sample_lines)))
+                            header = next(reader, [])
+                            discovered_tables.append({
+                                "table_name": tbl_name,
+                                "rows_count": 10000,
+                                "columns": header,
+                                "primary_keys": [header[0]] if header else [],
+                                "foreign_keys": []
+                            })
+        elif file_path.endswith(".csv"):
+            tbl_name = os.path.splitext(os.path.basename(file_path))[0].lower()
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                reader = csv.reader(f)
+                header = next(reader, [])
+                discovered_tables.append({
+                    "table_name": tbl_name,
+                    "rows_count": 10000,
+                    "columns": header,
+                    "primary_keys": [header[0]] if header else [],
+                    "foreign_keys": []
+                })
+        if discovered_tables:
+            return {
+                "status": "success",
+                "connection": conn_str,
+                "total_tables_found": len(discovered_tables),
+                "tables": discovered_tables,
+                "recommendation": f"Extracted schema for {len(discovered_tables)} file dataset(s).",
+            }
+
+    # 3. SQLite inspection
+    if "sqlite" in conn_str or conn_str.endswith(".db"):
+        import sqlite3
+        db_file = "demo_source_nm.db" if "demo_source_nm.db" in conn_str else conn_str.replace("sqlite:///", "").replace("sqlite://", "")
         if os.path.exists(db_file):
             conn = sqlite3.connect(db_file)
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
             tbl_names = [row[0] for row in cursor.fetchall()]
 
-            discovered_tables = []
             for tbl in tbl_names:
                 cursor.execute(f"PRAGMA table_info('{tbl}')")
                 cols_info = cursor.fetchall()
@@ -258,33 +404,54 @@ async def discover_schema_tables(
                     "primary_keys": pks, 
                     "foreign_keys": foreign_keys
                 })
-
             conn.close()
             if discovered_tables:
                 return {
                     "status": "success",
-                    "connection": body.connection_string,
+                    "connection": conn_str,
                     "total_tables_found": len(discovered_tables),
                     "tables": discovered_tables,
-                    "recommendation": f"Use N-Table Consolidator to merge all {len(discovered_tables)} tables into 1 unified MongoDB Document collection.",
+                    "recommendation": f"Discovered {len(discovered_tables)} SQLite table(s).",
                 }
 
-    # Dynamic generic database table discovery (N tables fallback)
-    discovered_tables = [
-        {"table_name": "users", "rows_count": 125000, "columns": ["id", "username", "email", "created_at"], "foreign_keys": []},
-        {"table_name": "user_profiles", "rows_count": 125000, "columns": ["id", "user_id", "first_name", "last_name", "phone"], "foreign_keys": [{"column": "user_id", "references_table": "users", "references_column": "id"}]},
-        {"table_name": "user_addresses", "rows_count": 140000, "columns": ["id", "user_id", "street", "city", "zipcode", "country"], "foreign_keys": [{"column": "user_id", "references_table": "users", "references_column": "id"}]},
-        {"table_name": "orders", "rows_count": 500000, "columns": ["id", "user_id", "status", "total_amount", "created_at"], "foreign_keys": [{"column": "user_id", "references_table": "users", "references_column": "id"}]},
-        {"table_name": "order_items", "rows_count": 1200000, "columns": ["id", "order_id", "product_id", "quantity", "unit_price"], "foreign_keys": [{"column": "order_id", "references_table": "orders", "references_column": "id"}, {"column": "product_id", "references_table": "products", "references_column": "id"}]},
-        {"table_name": "products", "rows_count": 5000, "columns": ["id", "name", "description", "category_id", "price"], "foreign_keys": []},
-        {"table_name": "payments", "rows_count": 535000, "columns": ["id", "order_id", "payment_method", "amount", "status"], "foreign_keys": [{"column": "order_id", "references_table": "orders", "references_column": "id"}]},
-    ]
+    # 4. MongoDB inspection
+    if "mongodb://" in conn_str or "mongodb+srv://" in conn_str:
+        import motor.motor_asyncio
+        try:
+            client = motor.motor_asyncio.AsyncIOMotorClient(conn_str, serverSelectionTimeoutMS=3000)
+            parsed = urlparse(conn_str)
+            db_name = parsed.path.lstrip("/") or "healthcare_claims"
+            db = client[db_name]
+            colls = await db.list_collection_names()
+            for coll in colls:
+                if coll.startswith("system."): continue
+                doc = await db[coll].find_one()
+                cols = list(doc.keys()) if doc else ["_id"]
+                cnt = await db[coll].count_documents({})
+                discovered_tables.append({
+                    "table_name": coll,
+                    "rows_count": cnt,
+                    "columns": cols,
+                    "primary_keys": ["_id"],
+                    "foreign_keys": []
+                })
+            client.close()
+            if discovered_tables:
+                return {
+                    "status": "success",
+                    "connection": conn_str,
+                    "total_tables_found": len(discovered_tables),
+                    "tables": discovered_tables,
+                    "recommendation": f"Discovered {len(discovered_tables)} MongoDB collection(s).",
+                }
+        except Exception as e:
+            logger.warning("[SchemaDiscover] MongoDB inspection failed: %s", e)
 
     return {
         "status": "success",
-        "connection": body.connection_string,
+        "connection": conn_str,
         "total_tables_found": len(discovered_tables),
         "tables": discovered_tables,
-        "recommendation": f"Use N-Table Consolidator to merge all {len(discovered_tables)} tables into 1 unified MongoDB Document collection.",
+        "recommendation": f"Found {len(discovered_tables)} table(s).",
     }
 

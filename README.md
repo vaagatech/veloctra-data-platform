@@ -190,24 +190,75 @@ destinations:
 
 ---
 
+## 🚀 Standalone CLI & CI/CD Runner
+
+Pipelines can be executed or validated directly from the terminal or CI/CD pipelines without starting the web server:
+
+```bash
+# Validate a pipeline YAML configuration and custom script
+python3 veloctra_cli.py validate --config configs/custom_script_pipeline.yaml
+
+# Execute a pipeline run
+python3 veloctra_cli.py run --config configs/custom_streaming_plugin.yaml --tenant healthcare_corp
+
+# Check engine version
+python3 veloctra_cli.py version
+```
+
+---
+
+## ⚡ Pluggable Streaming & Messaging
+
+Veloctra is **not limited to specific message brokers**. Developers can plug in any streaming broker dynamically:
+- **Built-in Connectors**: Apache Kafka, RabbitMQ, AWS SQS, and Redis Streams.
+- **Dynamic External Plugins**: Drop Python connectors into `plugins/` (e.g. `plugins/custom_nats_connector.py`) and reference via `plugin_file` or `plugin_module`.
+- **Ultra-Lightweight Footprint**: Base container starts in **< 40MB RAM** with zero heavy SDKs; broker libraries load on-demand only when invoked.
+
+---
+
+## 🐳 Deployment (Docker & Kubernetes)
+
+### Local Full Stack via Docker Compose
+```bash
+# Starts Veloctra API, PostgreSQL, MongoDB, Redis Streams, and Prometheus metrics
+docker compose up -d
+```
+
+### Ultra-Lightweight Kubernetes Pods
+```bash
+kubectl apply -f deploy/k8s/
+```
+
+- **Resource Requirements**: Request `32Mi` RAM / `50m` CPU, Limit `128Mi` RAM / `500m` CPU.
+- **Metrics Scraping**: Native Prometheus annotations (`/metrics`) enabled out of the box.
+
+---
+
 ## 📦 Monorepo Structure
 
 ```
 veloctra-data-platform/
 ├── apps/
-│   └── management-ui/              # React 18 + TypeScript + Tailwind Console
-├── configs/                        # Externalized Pipeline Definition Templates
-├── docs/                           # GitHub Pages Documentation Site
+│   └── management-ui/              # React 18 + TypeScript Console
+├── configs/                        # YAML Pipeline Templates (CDC, Streaming, Scripts)
+├── deploy/
+│   ├── k8s/                        # Kubernetes Deployment, Service, ConfigMap, Secret
+│   └── prometheus.yml              # Prometheus Scrape Configuration
+├── docs/                           # GitHub Pages Interactive Documentation Site
 ├── packages/
 │   ├── veloctra-core/              # Configuration & Base Protocols
 │   ├── veloctra-security/          # Double Envelope Encryption & RBAC
 │   ├── veloctra-state/             # MongoDB / SQLite FSM State Store
 │   ├── veloctra-resilience/        # Circuit Breakers & AWS Full Jitter Retry
-│   ├── veloctra-connectors/        # SQL, NoSQL & Universal File Connectors
-│   ├── veloctra-transformers/      # PyArrow / Polars Vector Engine & Partitioner
-│   ├── veloctra-orchestrator/      # MemoryGuard & Stream Orchestrator
+│   ├── veloctra-connectors/        # Pluggable SQL, NoSQL, File & Streaming Connectors
+│   ├── veloctra-transformers/      # SIMD Columnar Transforms, Script Engine & Schemas
+│   ├── veloctra-orchestrator/      # MemoryGuard & Stream Orchestrator & Scheduler
 │   └── veloctra-api/               # FastAPI REST & WebSocket Telemetry Server
-├── scripts/                        # CI/CD Importers & Benchmarks
+├── plugins/                        # Dynamic Third-Party Connector Plugins
+├── scripts/                        # Benchmarks & Ingestion Utilities
+├── Dockerfile                      # Multi-Stage Ultra-Lightweight Containerfile
+├── docker-compose.yml              # Full-Stack Local Orchestration
+├── veloctra_cli.py                 # Standalone CLI Runner
 ├── start.sh                        # Production Daemon Launcher
 └── stop.sh                         # Graceful Shutdown Script
 ```
@@ -228,6 +279,4 @@ Measured on a standard 8-Core Apple Silicon M-series machine (Local SSD & In-Mem
 
 ## 🤝 Contributing & License
 
-Contributions are welcome! Please review our contributing guidelines and submit pull requests.
-
-Distributed under the **Apache 2.0 License**. See `LICENSE` for more information.
+Contributions are welcome! Distributed under the **Apache 2.0 License**. See `LICENSE` for more information.

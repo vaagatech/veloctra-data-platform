@@ -113,9 +113,12 @@ class SQLConnector:
         watermark_clause: Optional[str] = None,
         params: Optional[Tuple] = None,
     ) -> AsyncGenerator[pa.RecordBatch, None]:
-        full_query = query
+        full_query = query.strip()
         if watermark_clause:
-            full_query = f"{query} WHERE {watermark_clause}"
+            if " where " in full_query.lower():
+                full_query = f"{full_query} AND ({watermark_clause})"
+            else:
+                full_query = f"{full_query} WHERE {watermark_clause}"
 
         if self._driver == "asyncpg":
             async for batch in self._stream_asyncpg(full_query, chunk_size, params):
@@ -246,6 +249,31 @@ class SQLConnector:
                     await conn.executemany(query, rows)
 
         logger.info("[SQL] Upserted %d rows into '%s'", batch.num_rows, table_name)
+
+    @async_retry(max_attempts=3, initial_backoff=1.0)
+    async def bulk_delete(
+        self,
+        table_name: str,
+        batch: pa.RecordBatch,
+        match_keys: List[str],
+    ) -> None:
+        if batch.num_rows == 0 or not match_keys:
+            return
+        pydict = {k: batch.column(batch.schema.get_field_index(k)).to_pylist() for k in match_keys}
+        if self._driver == "sqlite":
+            where_clause = " AND ".join(f"{k} = ?" for k in match_keys)
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            rows = [tuple(pydict[k][r] for k in match_keys) for r in range(batch.num_rows)]
+            await self._sqlite_conn.executemany(query, rows)
+            await self._sqlite_conn.commit()
+        elif self._driver == "asyncpg":
+            where_clause = " AND ".join(f"{k} = ${i+1}" for i, k in enumerate(match_keys))
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            rows = [tuple(pydict[k][r] for k in match_keys) for r in range(batch.num_rows)]
+            async with self._pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.executemany(query, rows)
+        logger.info("[SQL] Deleted %d rows from '%s' via CDC", batch.num_rows, table_name)
 
     async def _bulk_insert_sqlite(self, table_name: str, batch: pa.RecordBatch) -> None:
         cols = batch.schema.names

@@ -1,21 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database, Plus, Trash2, ArrowRight, Zap } from 'lucide-react';
 import { ConnectionItem } from '../types';
 
 interface StudioWizardStep1Props {
   availableConnections: ConnectionItem[];
+  pipelineId?: string;
+  wizardConfig?: any;
   onNext: (wizardConfig: any) => void;
 }
 
-export const StudioWizardStep1: React.FC<StudioWizardStep1Props> = ({ availableConnections, onNext }) => {
-  const [pipelineId, setPipelineId] = useState('');
+export const StudioWizardStep1: React.FC<StudioWizardStep1Props> = ({
+  availableConnections,
+  pipelineId = '',
+  wizardConfig,
+  onNext,
+}) => {
+  const [currentPipelineId, setCurrentPipelineId] = useState(pipelineId || wizardConfig?.pipelineId || '');
   const [primarySources, setPrimarySources] = useState<{ connection_id: string }[]>([{ connection_id: '' }]);
   const [secondarySources, setSecondarySources] = useState<{ connection_id: string }[]>([]);
   const [destinations, setDestinations] = useState<{ connection_id: string }[]>([{ connection_id: '' }]);
 
+  // Synchronize when pipeline selection changes from the top Studio header
+  useEffect(() => {
+    if (pipelineId) {
+      setCurrentPipelineId(pipelineId);
+    }
+  }, [pipelineId]);
+
+  useEffect(() => {
+    if (wizardConfig) {
+      if (wizardConfig.pipelineId) {
+        setCurrentPipelineId(wizardConfig.pipelineId);
+      }
+      if (wizardConfig.primarySources && wizardConfig.primarySources.length > 0) {
+        setPrimarySources(wizardConfig.primarySources);
+      }
+      if (wizardConfig.secondarySources) {
+        setSecondarySources(wizardConfig.secondarySources);
+      }
+      if (wizardConfig.destinations && wizardConfig.destinations.length > 0) {
+        setDestinations(wizardConfig.destinations);
+      }
+    }
+  }, [wizardConfig]);
+
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pipelineId.trim()) {
+    if (!currentPipelineId.trim()) {
       alert("Please enter a Pipeline ID/Name.");
       return;
     }
@@ -29,7 +60,7 @@ export const StudioWizardStep1: React.FC<StudioWizardStep1Props> = ({ availableC
     }
 
     onNext({
-      pipelineId: pipelineId.trim().toLowerCase().replace(/\s+/g, '_'),
+      pipelineId: currentPipelineId.trim().toLowerCase().replace(/\s+/g, '_'),
       primarySources: primarySources.filter(s => s.connection_id),
       secondarySources: secondarySources.filter(s => s.connection_id),
       destinations: destinations.filter(d => d.connection_id)
@@ -64,10 +95,12 @@ export const StudioWizardStep1: React.FC<StudioWizardStep1Props> = ({ availableC
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             Step 1: System Selection
           </h3>
-          <p className="text-xs text-slate-500">Name your pipeline and select your Sources & Destinations.</p>
+          <p className="text-xs text-slate-500">
+            Selected Pipeline: <span className="font-mono font-bold text-indigo-600">{currentPipelineId || 'None'}</span>
+          </p>
         </div>
         <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-200 flex items-center gap-1">
-          <Zap className="w-3.5 h-3.5" /> Wizard Mode
+          <Zap className="w-3.5 h-3.5" /> Studio Wizard
         </span>
       </div>
 
@@ -75,9 +108,9 @@ export const StudioWizardStep1: React.FC<StudioWizardStep1Props> = ({ availableC
         <label className="block text-xs font-semibold text-slate-700">Pipeline Name / ID</label>
         <input 
           type="text" 
-          value={pipelineId}
-          onChange={(e) => setPipelineId(e.target.value)}
-          placeholder="e.g. sales_data_sync_v1"
+          value={currentPipelineId}
+          onChange={(e) => setCurrentPipelineId(e.target.value)}
+          placeholder="e.g. csv_to_postgres, sales_data_sync_v1"
           className="w-full text-sm border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
           required
         />

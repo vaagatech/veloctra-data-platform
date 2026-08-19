@@ -4,7 +4,8 @@
 # ==============================================================================
 
 pipeline_id: postgres_to_mongo_claims
-tenant_id: healthcare_enterprise
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
 version: 1
 description: "Streams claims and beneficiary records from PostgreSQL to local MongoDB cluster with vectorised transform and MemoryGuard governance."
 

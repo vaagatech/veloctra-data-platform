@@ -1,0 +1,21 @@
+pipeline_id: postgres_to_kafka_stream
+tenant_id: enterprise_fintech
+
+sources:
+  - name: pg_transactions_source
+    type: database
+    connection_string: "postgresql+asyncpg://user:secret@localhost:5432/fintech_db"
+    query: "SELECT transaction_id, user_id, amount, currency, status, updated_at FROM transactions"
+    chunk_size: 5000
+    delta:
+      enabled: true
+      watermark_column: "updated_at"
+      watermark_type: "timestamp"
+      initial_watermark: "1970-01-01T00:00:00Z"
+
+destinations:
+  - name: kafka_tx_stream_sink
+    type: kafka
+    bootstrap_servers: "localhost:9092"
+    topic: "raw_transactions_stream"
+    key_column: "transaction_id"

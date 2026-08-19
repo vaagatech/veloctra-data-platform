@@ -1,7 +1,31 @@
 version: '3.8'
+
 services:
-  postgres-test:
-    image: postgres:15
+  veloctra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: veloctra_engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=info
+      - DB_TYPE=sqlite
+      - SQLITE_PATH=/app/state.db
+      - PROMETHEUS_METRICS_ENABLED=true
+    volumes:
+      - veloctra_state:/app/state_data
+    depends_on:
+      - postgres
+      - mongo
+      - redis
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: veloctra_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: test_user
       POSTGRES_PASSWORD: test_password
@@ -11,8 +35,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  mongo-test:
-    image: mongo:6.0
+  mongo:
+    image: mongo:6.0-alpine
+    container_name: veloctra_mongo
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin_password
@@ -21,6 +47,28 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  redis:
+    image: redis:7-alpine
+    container_name: veloctra_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: veloctra_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - veloctra
+
 volumes:
+  veloctra_state:
   postgres_data:
   mongo_data:
+  redis_data:

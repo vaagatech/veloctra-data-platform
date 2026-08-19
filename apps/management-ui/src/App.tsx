@@ -31,7 +31,19 @@ export const App: React.FC = () => {
   useEffect(() => {
     const savedToken = localStorage.getItem('etl_token');
     if (savedToken) {
-      setToken(savedToken);
+      fetch('/auth/me', {
+        headers: { Authorization: `Bearer ${savedToken}` },
+      })
+        .then((res) => {
+          if (!res.ok) {
+            handleLogout();
+          } else {
+            setToken(savedToken);
+          }
+        })
+        .catch(() => {
+          handleLogout();
+        });
     }
   }, []);
 

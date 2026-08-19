@@ -25,12 +25,12 @@ _DEMO_USERS: Dict[str, Dict] = {
     "admin": {
         "password_hash": hash_password("changeme"),
         "role": Role.SUPER_ADMIN.value,
-        "tenant_id": "finance_prod_workspace",
+        "tenant_id": "healthcare_prod_workspace",
     },
     "developer": {
         "password_hash": hash_password("devpass"),
         "role": Role.DEVELOPER.value,
-        "tenant_id": "finance_prod_workspace",
+        "tenant_id": "healthcare_prod_workspace",
     },
 }
 

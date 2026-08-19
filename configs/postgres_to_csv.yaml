@@ -1,5 +1,5 @@
 pipeline_id: postgres_to_csv
-project_id: finance_prod_workspace
+project_id: healthcare_prod_workspace
 version: 1
 description: "Extracts claims from PostgreSQL and streams partitioned lakehouse CSV / Parquet files to local storage."
 

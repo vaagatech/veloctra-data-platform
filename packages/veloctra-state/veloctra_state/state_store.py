@@ -118,6 +118,10 @@ class BaseStateAdapter(ABC):
         pass
 
     @abstractmethod
+    async def get_last_watermark(self, job_id: str, pipeline_id: Optional[str] = None) -> Optional[str]:
+        pass
+
+    @abstractmethod
     async def push_dlq(
         self,
         job_id: str,
@@ -187,6 +191,14 @@ class BaseStateAdapter(ABC):
 
     @abstractmethod
     async def get_connections(self, tenant_id: str) -> List[Dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def get_all_job_states(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
+        pass
+
+    @abstractmethod
+    async def get_all_job_details(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -273,6 +285,27 @@ class SQLiteStateAdapter(BaseStateAdapter):
         if cp is None or cp.get("state") != "COMPLETED":
             return 0
         return cp["chunk_index"] + 1
+
+    async def get_last_watermark(self, job_id: str, pipeline_id: Optional[str] = None) -> Optional[str]:
+        conn = await self._ensure_conn()
+        if pipeline_id:
+            sql = """
+                SELECT watermark_value FROM checkpoints 
+                WHERE (job_id = ? OR job_id LIKE ?) AND watermark_value IS NOT NULL AND watermark_value != ''
+                ORDER BY created_at DESC, chunk_index DESC LIMIT 1
+            """
+            async with conn.execute(sql, (job_id, f"{pipeline_id}_%")) as cursor:
+                row = await cursor.fetchone()
+                return str(row["watermark_value"]) if row and row["watermark_value"] else None
+        else:
+            sql = """
+                SELECT watermark_value FROM checkpoints 
+                WHERE job_id = ? AND watermark_value IS NOT NULL AND watermark_value != ''
+                ORDER BY chunk_index DESC LIMIT 1
+            """
+            async with conn.execute(sql, (job_id,)) as cursor:
+                row = await cursor.fetchone()
+                return str(row["watermark_value"]) if row and row["watermark_value"] else None
 
     async def push_dlq(
         self,
@@ -463,10 +496,13 @@ class SQLiteStateAdapter(BaseStateAdapter):
 
     async def get_projects(self, tenant_id: str) -> List[Dict[str, Any]]:
         conn = await self._ensure_conn()
-        cursor = await conn.execute(
-            "SELECT id, name, description, created_at FROM projects WHERE tenant_id = ?",
-            (tenant_id,)
-        )
+        if tenant_id in ("*", "", None):
+            cursor = await conn.execute("SELECT id, name, description, created_at FROM projects")
+        else:
+            cursor = await conn.execute(
+                "SELECT id, name, description, created_at FROM projects WHERE tenant_id = ?",
+                (tenant_id,)
+            )
         rows = await cursor.fetchall()
         return [{"id": r["id"], "name": r["name"], "description": r["description"], "created_at": r["created_at"]} for r in rows]
 
@@ -500,6 +536,68 @@ class SQLiteStateAdapter(BaseStateAdapter):
             }
             for r in rows
         ]
+
+    async def get_all_job_states(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
+        conn = await self._ensure_conn()
+        if tenant_id and tenant_id not in ("*", "", None):
+            cursor = await conn.execute(
+                """SELECT e1.job_id, e1.to_state FROM fsm_events e1
+                   INNER JOIN (
+                       SELECT job_id, MAX(created_at) as max_created FROM fsm_events WHERE tenant_id = ? GROUP BY job_id
+                   ) e2 ON e1.job_id = e2.job_id AND e1.created_at = e2.max_created""",
+                (tenant_id,)
+            )
+        else:
+            cursor = await conn.execute(
+                """SELECT e1.job_id, e1.to_state FROM fsm_events e1
+                   INNER JOIN (
+                       SELECT job_id, MAX(created_at) as max_created FROM fsm_events GROUP BY job_id
+                   ) e2 ON e1.job_id = e2.job_id AND e1.created_at = e2.max_created"""
+            )
+        rows = await cursor.fetchall()
+        return {r["job_id"]: r["to_state"] for r in rows}
+
+    async def get_all_job_details(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        conn = await self._ensure_conn()
+        if tenant_id and tenant_id not in ("*", "", None):
+            cursor = await conn.execute(
+                """SELECT job_id, 
+                          MIN(created_at) as created_at, 
+                          MAX(created_at) as updated_at,
+                          tenant_id
+                   FROM fsm_events WHERE tenant_id = ? GROUP BY job_id ORDER BY created_at DESC""",
+                (tenant_id,)
+            )
+        else:
+            cursor = await conn.execute(
+                """SELECT job_id, 
+                          MIN(created_at) as created_at, 
+                          MAX(created_at) as updated_at,
+                          tenant_id
+                   FROM fsm_events GROUP BY job_id ORDER BY created_at DESC"""
+            )
+        rows = await cursor.fetchall()
+        results = []
+        for r in rows:
+            jid = r["job_id"]
+            c2 = await conn.execute("SELECT to_state FROM fsm_events WHERE job_id = ? ORDER BY created_at DESC LIMIT 1", (jid,))
+            row_state = await c2.fetchone()
+            state = row_state["to_state"] if row_state else "COMPLETED"
+            start_ts = r["created_at"] or 0
+            end_ts = r["updated_at"] or start_ts
+            duration = max(0.0, round(end_ts - start_ts, 2))
+            parts = jid.rsplit("_", 1)
+            pipeline_name = parts[0] if len(parts) > 1 and parts[1].isdigit() else jid
+            results.append({
+                "id": jid,
+                "pipeline_id": pipeline_name,
+                "state": state,
+                "tenant_id": r["tenant_id"],
+                "created_at": start_ts,
+                "updated_at": end_ts,
+                "duration_sec": duration,
+            })
+        return results
 
 class MongoStateAdapter(BaseStateAdapter):
     """Async MongoDB state adapter using Motor for enterprise state management."""
@@ -555,6 +653,7 @@ class MongoStateAdapter(BaseStateAdapter):
         doc = await db.checkpoints.find_one({"job_id": job_id}, sort=[("chunk_index", -1)])
         if doc:
             doc["id"] = str(doc.get("_id"))
+            doc.pop("_id", None)
         return doc
 
     async def get_resume_chunk(self, job_id: str) -> int:
@@ -562,6 +661,24 @@ class MongoStateAdapter(BaseStateAdapter):
         if cp is None or cp.get("state") != "COMPLETED":
             return 0
         return cp["chunk_index"] + 1
+
+    async def get_last_watermark(self, job_id: str, pipeline_id: Optional[str] = None) -> Optional[str]:
+        db = await self._ensure_db()
+        filter_spec: Dict[str, Any] = {
+            "watermark_value": {"$ne": None, "$exists": True}
+        }
+        if pipeline_id:
+            filter_spec["$or"] = [
+                {"job_id": job_id},
+                {"job_id": {"$regex": f"^{pipeline_id}_"}}
+            ]
+        else:
+            filter_spec["job_id"] = job_id
+            
+        doc = await db.checkpoints.find_one(filter_spec, sort=[("created_at", -1), ("chunk_index", -1)])
+        if doc and doc.get("watermark_value"):
+            return str(doc["watermark_value"])
+        return None
 
     async def push_dlq(
         self,
@@ -612,6 +729,7 @@ class MongoStateAdapter(BaseStateAdapter):
         records = []
         async for doc in cursor:
             doc["id"] = str(doc.get("_id"))
+            doc.pop("_id", None)
             records.append(doc)
         return records
 
@@ -651,8 +769,61 @@ class MongoStateAdapter(BaseStateAdapter):
         events = []
         async for doc in cursor:
             doc["id"] = str(doc.get("_id"))
+            doc.pop("_id", None)
             events.append(doc)
         return events
+
+    async def get_all_job_states(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
+        db = await self._ensure_db()
+        match_stage = {"tenant_id": tenant_id} if tenant_id and tenant_id not in ("*", "", None) else {}
+        pipeline = [
+            {"$match": match_stage} if match_stage else {"$match": {}},
+            {"$sort": {"created_at": -1}},
+            {"$group": {
+                "_id": "$job_id",
+                "latest_state": {"$first": "$to_state"},
+                "tenant_id": {"$first": "$tenant_id"},
+                "last_updated": {"$first": "$created_at"}
+            }}
+        ]
+        results = {}
+        async for doc in db.fsm_events.aggregate(pipeline):
+            results[doc["_id"]] = doc["latest_state"]
+        return results
+
+    async def get_all_job_details(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        db = await self._ensure_db()
+        match_stage = {"tenant_id": tenant_id} if tenant_id and tenant_id not in ("*", "", None) else {}
+        pipeline = [
+            {"$match": match_stage} if match_stage else {"$match": {}},
+            {"$sort": {"created_at": 1}},
+            {"$group": {
+                "_id": "$job_id",
+                "latest_state": {"$last": "$to_state"},
+                "tenant_id": {"$last": "$tenant_id"},
+                "created_at": {"$first": "$created_at"},
+                "updated_at": {"$last": "$created_at"},
+            }},
+            {"$sort": {"created_at": -1}}
+        ]
+        results = []
+        async for doc in db.fsm_events.aggregate(pipeline):
+            jid = doc["_id"]
+            start_ts = doc.get("created_at") or 0
+            end_ts = doc.get("updated_at") or start_ts
+            duration = max(0.0, round(end_ts - start_ts, 2))
+            parts = jid.rsplit("_", 1)
+            pipeline_name = parts[0] if len(parts) > 1 and parts[1].isdigit() else jid
+            results.append({
+                "id": jid,
+                "pipeline_id": pipeline_name,
+                "state": doc.get("latest_state", "COMPLETED"),
+                "tenant_id": doc.get("tenant_id", tenant_id),
+                "created_at": start_ts,
+                "updated_at": end_ts,
+                "duration_sec": duration,
+            })
+        return results
 
     async def get_connections(self, tenant_id: str) -> List[Dict[str, Any]]:
         db = await self._ensure_db()
@@ -690,10 +861,12 @@ class MongoStateAdapter(BaseStateAdapter):
 
     async def get_projects(self, tenant_id: str) -> List[Dict[str, Any]]:
         db = await self._ensure_db()
-        cursor = db.projects.find({"tenant_id": tenant_id})
+        filter_spec = {} if tenant_id in ("*", "", None) else {"tenant_id": tenant_id}
+        cursor = db.projects.find(filter_spec)
         res = []
         async for doc in cursor:
             doc["id"] = doc.get("id") or str(doc.get("_id"))
+            doc.pop("_id", None)
             res.append(doc)
         return res
 
@@ -803,6 +976,9 @@ class StateStore:
     async def get_resume_chunk(self, job_id: str) -> int:
         return await self._adapter.get_resume_chunk(job_id)
 
+    async def get_last_watermark(self, job_id: str, pipeline_id: Optional[str] = None) -> Optional[str]:
+        return await self._adapter.get_last_watermark(job_id, pipeline_id)
+
     async def push_dlq(self, *args, **kwargs) -> Any:
         return await self._adapter.push_dlq(*args, **kwargs)
 
@@ -844,6 +1020,12 @@ class StateStore:
 
     async def get_next_run_id(self, tenant_id: str, pipeline_id: str) -> str:
         return await self._adapter.get_next_run_id(tenant_id, pipeline_id)
+
+    async def get_all_job_states(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
+        return await self._adapter.get_all_job_states(tenant_id)
+
+    async def get_all_job_details(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return await self._adapter.get_all_job_details(tenant_id)
 
     async def save_connection(self, tenant_id: str, conn_id: str, name: str, type: str, url: str, config_payload: Dict[str, Any]) -> None:
         enc_url = self._enc_svc.encrypt_string(url) if url else url

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Zap,
@@ -21,8 +21,30 @@ import {
   Plug,
   BookOpen,
   AlertTriangle,
+  AlertOctagon,
+  AlertCircle,
+  Copy,
+  Check,
+  ExternalLink,
+  Maximize2,
+  ChevronDown,
+  ChevronUp,
+  Terminal,
+  X,
+  Clock,
 } from 'lucide-react';
-import { CircuitBreakerInfo, DLQRecord, FSMState, JobInfo } from '../types';
+
+const formatJobTime = (ts?: number) => {
+  if (!ts) return 'Active Run';
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+import { CircuitBreakerInfo, DLQRecord, FSMState, JobInfo, PipelineProgressEvent, PipelineErrorInfo } from '../types';
 import { useTelemetryWebSocket } from '../hooks/useTelemetryWebSocket';
 import { MetricCards } from '../components/MetricCards';
 import { FSMPipelineVisualizer } from '../components/FSMPipelineVisualizer';
@@ -49,6 +71,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNav = 'dashboard' }) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [selectedWorkspace, setSelectedWorkspace] = useState('');
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
 
@@ -92,12 +115,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
   const fetchCurrentConfig = async (pid: string) => {
     if (!pid || !token) return;
     try {
-      const res = await fetch(`/configs/${pid}`, {
+      const res = await fetch(`/configs/${encodeURIComponent(pid)}?tenant_id=${encodeURIComponent(selectedWorkspace || '')}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
         setConfigYaml(JSON.stringify(data, null, 2));
+
+        const sources = data.sources || (data.source ? [data.source] : []);
+        const mappedSources = sources.map((s: any) => {
+          const sName = (s.name || '').toLowerCase().replace(/[\s-]/g, '_');
+          const found = connections.find(c => c.id === sName || c.name === s.name || c.id === s.name);
+          return { connection_id: found ? found.id : (sName || connections[0]?.id || '') };
+        });
+
+        const dests = data.destinations || [];
+        const mappedDests = dests.map((d: any) => {
+          const dName = (d.name || '').toLowerCase().replace(/[\s-]/g, '_');
+          const found = connections.find(c => c.id === dName || c.name === d.name || c.id === d.name);
+          return { connection_id: found ? found.id : (dName || connections[0]?.id || '') };
+        });
+
+        if (sources.length > 0) {
+          const s = sources[0];
+          const srcConn = s.connection_string || s.path || s.url || s.name || '';
+          if (srcConn) {
+            setSchemaConnectionString(srcConn);
+          }
+        }
+
+        setWizardConfig({
+          pipelineId: pid,
+          primarySources: mappedSources.length > 0 ? mappedSources : [{ connection_id: '' }],
+          secondarySources: [],
+          destinations: mappedDests.length > 0 ? mappedDests : [{ connection_id: '' }]
+        });
       }
     } catch (e) {
       console.error("Failed to fetch current config", e);
@@ -121,24 +173,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [mappingTypes, setMappingTypes] = useState<Record<string, 'direct' | 'function'>>({});
   const [encryptedFields, setEncryptedFields] = useState<Record<string, boolean>>({});
-  const [schemaConnectionString, setSchemaConnectionString] = useState('sqlite:///demo_source_nm.db');
+  const [schemaConnectionString, setSchemaConnectionString] = useState('raw_claims_zip_file');
   const [schemaLoading, setSchemaLoading] = useState(false);
 
-  const fetchSchema = async () => {
+  const fetchSchema = async (customConn?: string) => {
     setSchemaLoading(true);
+    const targetConn = customConn || schemaConnectionString || (
+      wizardConfig?.primarySources?.[0]?.connection_id
+        ? (connections.find(c => c.id === wizardConfig.primarySources[0].connection_id)?.url || wizardConfig.primarySources[0].connection_id)
+        : (connections[0]?.url || 'raw_claims_zip_file')
+    );
     try {
       const res = await fetch('/configs/schema-discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ connection_string: schemaConnectionString }),
+        body: JSON.stringify({ connection_string: targetConn }),
       });
       if (res.ok) {
         const data = await res.json();
         const tables = data.tables || [];
         setSchemaTables(tables);
         
-        // Auto-initialize mappings if not already set
-        if (Object.keys(fieldMappings).length === 0 && tables.length > 0) {
+        // Auto-initialize mappings
+        if (tables.length > 0) {
           const initialMap: Record<string, string> = {};
           const initialTypes: Record<string, 'direct' | 'function'> = {};
           const initialEnc: Record<string, boolean> = {};
@@ -146,9 +203,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
           tables.forEach((tbl: any) => {
             (tbl.columns || []).forEach((c: string) => {
               const key = `${tbl.table_name}.${c}`;
-              initialMap[key] = c; // default map to same name
+              initialMap[key] = c;
               initialTypes[key] = 'direct';
-              initialEnc[key] = c.includes('ssn') || c.includes('card');
+              initialEnc[key] = c.toLowerCase().includes('ssn') || c.toLowerCase().includes('card') || c.toLowerCase().includes('birth') || c.toLowerCase().includes('death');
             });
           });
           setFieldMappings(initialMap);
@@ -167,38 +224,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
     selectedJobId,
     token
   );
+  const [jobMetrics, setJobMetrics] = useState<PipelineProgressEvent | null>(null);
+  const [jobError, setJobError] = useState<PipelineErrorInfo | null>(null);
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
+  const [isErrorExpanded, setIsErrorExpanded] = useState(false);
+  const [copiedError, setCopiedError] = useState(false);
 
   const fetchProjects = async () => {
     try {
+      setProjectsLoading(true);
       const res = await fetch('/projects', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        onLogout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const fetchedProjects = data.projects || [];
         setProjects(fetchedProjects);
         if (fetchedProjects.length === 0) {
           setIsProjectModalOpen(true);
-        } else if (!selectedWorkspace) {
+        } else if (!selectedWorkspace || !fetchedProjects.some((p: any) => p.id === selectedWorkspace)) {
           setSelectedWorkspace(fetchedProjects[0].id);
         }
       }
     } catch (err) {
       console.error('Failed to fetch projects:', err);
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
   const fetchPipelines = async () => {
     if (!selectedWorkspace) return;
     try {
-      const res = await fetch('/configs/list', {
+      const res = await fetch(`/configs/list?tenant_id=${encodeURIComponent(selectedWorkspace)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setAvailablePipelines(data.pipelines || []);
-        if (data.pipelines && data.pipelines.length > 0) {
-          setSelectedLaunchPipeline(data.pipelines[0]);
+        const pipeList = data.pipelines || [];
+        setAvailablePipelines(pipeList);
+        if (pipeList.length > 0) {
+          setSelectedLaunchPipeline(pipeList[0]);
+          const currentId = studioPipelineId && pipeList.includes(studioPipelineId) ? studioPipelineId : pipeList[0];
+          setStudioPipelineId(currentId);
+          fetchCurrentConfig(currentId);
         }
       }
     } catch (err) {
@@ -209,7 +282,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
   const fetchConnections = async () => {
     if (!selectedWorkspace) return;
     try {
-      const res = await fetch('/configs/connections/list', {
+      const res = await fetch(`/configs/connections/list?tenant_id=${encodeURIComponent(selectedWorkspace)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -225,7 +298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
     const ws = workspaceId || selectedWorkspace;
     if (!ws) return;
     try {
-      const res = await fetch(`/pipelines?project_id=${ws}`, {
+      const res = await fetch(`/pipelines?project_id=${encodeURIComponent(ws)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401) {
@@ -233,13 +306,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
         return;
       }
       const data = await res.json();
-      const jobList: JobInfo[] = Object.entries(data.jobs || {}).map(([id, state]) => ({
+      const rawList: JobInfo[] = data.job_list || Object.entries(data.jobs || {}).map(([id, state]) => ({
         id,
         state: state as FSMState,
       }));
-      setJobs(jobList);
-      if (jobList.length > 0) {
-        setSelectedJobId(jobList[0].id);
+      const sortedJobs = [...rawList].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      setJobs(sortedJobs);
+      if (sortedJobs.length > 0) {
+        const targetId = (!selectedJobId || !sortedJobs.some(j => j.id === selectedJobId)) ? sortedJobs[0].id : selectedJobId;
+        setSelectedJobId(targetId);
+        fetchJobDetails(targetId);
       } else {
         setSelectedJobId(null);
       }
@@ -257,6 +333,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
         const data = await statusRes.json();
         setCurrentState(data.state as FSMState);
         setCircuitBreakers(Object.values(data.circuit_breakers || {}));
+        if (data.metrics) {
+          setJobMetrics({
+            event: 'pipeline_progress',
+            job_id: jobId,
+            rows_processed: data.metrics.rows_processed || 0,
+            chunks_processed: data.metrics.chunks_processed || 0,
+            rows_per_sec: data.metrics.rows_per_sec || 0,
+            memory_percent: data.metrics.memory_percent || 0,
+            chunk_size: data.metrics.chunk_size || 0,
+            timestamp: data.metrics.timestamp || Date.now(),
+          });
+        }
+        setJobError(data.error || (data.state === 'FAILED' ? { message: 'Pipeline run terminated with a runtime failure.' } : null));
       }
 
       const dlqRes = await fetch(`/pipelines/${jobId}/dlq?include_replayed=true&limit=50`, {
@@ -362,9 +451,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
     }
   };
 
-  const filteredJobs = jobs.filter((j) =>
-    j.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredJobs = useMemo(() => {
+    return jobs
+      .filter((j) =>
+        j.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (j.pipeline_id && j.pipeline_id.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  }, [jobs, searchQuery]);
+
+  if (projectsLoading) {
+    return (
+      <div className="flex flex-col h-screen bg-slate-50 items-center justify-center font-sans">
+        <div className="flex items-center gap-3 text-slate-700 font-semibold text-sm">
+          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          Loading Workspace...
+        </div>
+      </div>
+    );
+  }
 
   if (projects.length === 0) {
     return (
@@ -373,16 +478,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
           <FolderGit2 className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-slate-900 mb-2">Welcome to Veloctra Data Platform</h2>
           <p className="text-sm text-slate-500 mb-6">You don't have any workspaces yet. Create a workspace to get started with your ETL pipelines.</p>
-          <button 
-            onClick={() => setIsProjectModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm"
-          >
-            Create Your First Workspace
-          </button>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => setIsProjectModalOpen(true)}
+              className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm shadow-md shadow-indigo-500/20"
+            >
+              Create Your First Workspace
+            </button>
+            <button
+              onClick={() => fetchProjects()}
+              className="w-full px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs transition-colors"
+            >
+              ↻ Refresh Workspaces
+            </button>
+            <button
+              onClick={onLogout}
+              className="w-full px-4 py-2 text-rose-600 hover:bg-rose-50 rounded-lg font-semibold text-xs transition-colors"
+            >
+              Sign Out & Re-Authenticate
+            </button>
+          </div>
         </div>
         <ProjectCreateModal
           isOpen={isProjectModalOpen}
-          onClose={() => {}} // Forced, cannot close
+          onClose={() => setIsProjectModalOpen(false)}
           token={token}
           onProjectCreated={(p) => {
             fetchProjects();
@@ -421,7 +540,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
             >
               {projects.map((ws) => (
                 <option key={ws.id} value={ws.id}>
-                  {ws.name}
+                  {ws.name} ({ws.id})
                 </option>
               ))}
             </select>
@@ -592,29 +711,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
 
         {/* Secondary Pipeline Explorer Drawer (Only active when on Pipeline Dashboard) */}
         {activeNav === 'dashboard' && (
-          <aside className="w-64 border-r border-slate-200 bg-slate-50/50 p-4 flex flex-col justify-between shrink-0 overflow-hidden">
+          <aside className="w-72 border-r border-slate-200 bg-white p-4 flex flex-col justify-between shrink-0 overflow-hidden shadow-sm">
             <div className="flex flex-col flex-1 overflow-hidden min-h-0 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-purple-600" /> Workspace Pipelines ({filteredJobs.length})
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-indigo-600" /> Pipeline Runs ({filteredJobs.length})
                 </span>
+                <span className="text-[10px] font-semibold text-slate-400">Latest first</span>
               </div>
 
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Search pipelines..."
+                  placeholder="Search runs or pipelines..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-md bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all"
                 />
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {filteredJobs.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-slate-400">
-                    No active pipelines in this workspace
+                  <div className="text-center py-10 px-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-slate-600">No runs recorded</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Start a pipeline run below to stream data and telemetry.</p>
                   </div>
                 ) : (
                   filteredJobs.map((job) => {
@@ -628,29 +750,57 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                       <button
                         key={job.id}
                         onClick={() => setSelectedJobId(job.id)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all text-left group min-w-0 ${
+                        className={`w-full p-2.5 rounded-xl border text-left transition-all group flex flex-col gap-1.5 ${
                           isSelected
-                            ? 'bg-white border border-indigo-200 text-indigo-900 font-bold shadow-sm'
-                            : 'hover:bg-white/60 text-slate-600'
+                            ? 'bg-indigo-50/70 border-indigo-300 shadow-sm ring-1 ring-indigo-500/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
                         }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0 truncate">
+                        <div className="flex items-center justify-between gap-1.5 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0 truncate">
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                isActive
+                                  ? 'bg-emerald-500 animate-ping'
+                                  : job.state === 'PAUSED'
+                                  ? 'bg-amber-500'
+                                  : job.state === 'FAILED'
+                                  ? 'bg-rose-500'
+                                  : job.state === 'COMPLETED'
+                                  ? 'bg-emerald-500'
+                                  : 'bg-slate-400'
+                              }`}
+                            />
+                            <span className={`font-mono text-xs truncate ${isSelected ? 'font-bold text-indigo-950' : 'font-semibold text-slate-900'}`}>
+                              {job.id}
+                            </span>
+                          </div>
                           <span
-                            className={`w-2 h-2 rounded-full shrink-0 ${
-                              isActive
-                                ? 'bg-emerald-500 animate-pulse'
-                                : job.state === 'PAUSED'
-                                ? 'bg-amber-500'
+                            className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${
+                              job.state === 'COMPLETED'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isActive
+                                ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
                                 : job.state === 'FAILED'
-                                ? 'bg-rose-500'
-                                : 'bg-slate-400'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                             }`}
-                          />
-                          <span className="truncate font-mono text-[11px]">{job.id}</span>
+                          >
+                            {job.state}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-sans uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 ml-1">
-                          {job.state}
-                        </span>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 border-t border-slate-100/80">
+                          <span className="flex items-center gap-1 font-medium">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            {job.created_at ? formatJobTime(job.created_at) : 'Active Run'}
+                          </span>
+                          {job.duration_sec !== undefined && job.duration_sec > 0 && (
+                            <span className="font-mono text-[10px] text-slate-500 font-semibold">
+                              ⏱️ {job.duration_sec}s
+                            </span>
+                          )}
+                        </div>
                       </button>
                     );
                   })
@@ -726,7 +876,90 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                 )}
               </div>
 
-              <MetricCards progress={progress} />
+              {/* Failure Root Cause & Diagnostics Alert Banner */}
+              {((currentState === 'FAILED') || (jobs.find((j) => j.id === selectedJobId)?.state === 'FAILED') || !!jobError) && (
+                <div className="w-full bg-rose-50 border-2 border-rose-300 rounded-xl p-5 shadow-sm space-y-3.5 animate-in fade-in duration-200">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-rose-200/70 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-600 shrink-0 shadow-xs">
+                        <AlertOctagon className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-black text-xs tracking-wider uppercase flex items-center gap-1 shadow-xs">
+                            <AlertCircle className="w-3 h-3" /> Pipeline Run Failed
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md bg-white border border-rose-300 text-rose-900 font-mono text-xs font-bold">
+                            Failed In Stage: <strong className="text-amber-700">{jobError?.failed_at_state || currentState || 'CHECKPOINTING'}</strong>
+                          </span>
+                          {jobError?.error_type && (
+                            <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[11px] font-semibold">
+                              {jobError.error_type}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-rose-800 font-medium mt-1">Execution halted due to an unexpected state machine violation or runtime exception.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 pt-1 md:pt-0">
+                      <button
+                        onClick={() => {
+                          const text = jobError?.traceback || jobError?.message || 'Pipeline execution failed';
+                          navigator.clipboard.writeText(text);
+                          setCopiedError(true);
+                          setTimeout(() => setCopiedError(false), 2000);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-rose-200 text-rose-900 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+                        title="Copy error details"
+                      >
+                        {copiedError ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-rose-700" />}
+                        {copiedError ? 'Copied!' : 'Copy Error'}
+                      </button>
+
+                      <button
+                        onClick={() => setIsErrorModalOpen(true)}
+                        className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5 text-rose-800" /> Full Diagnostics
+                      </button>
+
+                      <button
+                        onClick={handleStartJob}
+                        className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5" /> Retry Run
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Primary Error Message Display */}
+                  <div className="p-3.5 bg-white border border-rose-200 rounded-lg text-xs font-mono text-rose-950 font-semibold break-words leading-relaxed shadow-xs">
+                    {jobError?.message || 'Illegal FSM transition for job: execution halted unexpectedly.'}
+                  </div>
+
+                  {/* Collapsible Quick Inline Stack Trace */}
+                  {jobError?.traceback && (
+                    <div className="pt-0.5">
+                      <button
+                        onClick={() => setIsErrorExpanded(!isErrorExpanded)}
+                        className="text-xs font-bold text-rose-700 hover:text-rose-900 flex items-center gap-1.5 transition-colors"
+                      >
+                        {isErrorExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {isErrorExpanded ? 'Hide Raw Stack Trace' : 'Show Complete Exception Traceback'}
+                      </button>
+
+                      {isErrorExpanded && (
+                        <div className="mt-2.5 p-3.5 bg-slate-900 border border-slate-800 rounded-lg font-mono text-xs text-rose-300 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text shadow-inner">
+                          {jobError.traceback}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <MetricCards progress={progress || jobMetrics} />
               <FSMPipelineVisualizer currentState={currentState} />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -770,9 +1003,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                       {availablePipelines.map((pid) => (
                         <option key={pid} value={pid}>{pid}</option>
                       ))}
-                      <option value="csv_to_postgres">csv_to_postgres</option>
-                      <option value="postgres_to_mongo">postgres_to_mongo</option>
-                      <option value="postgres_to_csv">postgres_to_csv</option>
                     </select>
 
                     <button
@@ -888,6 +1118,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
               {studioSubTab === 'wizard_step1' && (
                 <StudioWizardStep1
                   availableConnections={connections}
+                  pipelineId={studioPipelineId}
+                  wizardConfig={wizardConfig}
                   onNext={(cfg) => {
                     setWizardConfig(cfg);
                     setStudioSubTab('visual_modeler');
@@ -916,6 +1148,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                 <MultiTableConsolidator
                   token={token}
                   projectId={studioPipelineId || selectedWorkspace}
+                  availableConnections={connections}
+                  wizardConfig={wizardConfig}
                   onSaved={() => fetchJobs(selectedWorkspace)}
                 />
               )}
@@ -965,7 +1199,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
           {/* Observability View */}
           {activeNav === 'observability' && (
             <ObservabilityDashboard
-              progress={progress}
+              progress={progress || jobMetrics}
               currentState={currentState}
               auditLog={auditLog}
               dlqRecords={dlqRecords}
@@ -995,6 +1229,100 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
           )}
         </main>
       </div>
+
+      {/* Full Error Diagnostics Modal */}
+      {isErrorModalOpen && jobError && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl space-y-4 p-6 text-slate-100 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
+                <AlertOctagon className="w-5 h-5 text-rose-500" /> Pipeline Failure Diagnostics — {selectedJobId}
+              </h3>
+              <button
+                onClick={() => setIsErrorModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <div className="text-slate-500 font-bold uppercase text-[10px]">Error Type</div>
+                  <div className="text-rose-300 font-mono font-bold mt-1">{jobError.error_type || 'ExecutionError'}</div>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <div className="text-slate-500 font-bold uppercase text-[10px]">Failed In Stage</div>
+                  <div className="text-amber-300 font-mono font-bold mt-1">{jobError.failed_at_state || currentState || 'PROCESSING'}</div>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 col-span-2 sm:col-span-1">
+                  <div className="text-slate-500 font-bold uppercase text-[10px]">Pipeline ID</div>
+                  <div className="text-indigo-300 font-mono font-bold mt-1 truncate">{selectedJobId}</div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Primary Error Message</label>
+                <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-200 text-xs font-mono break-words leading-relaxed">
+                  {jobError.message}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-slate-500" /> Complete Exception Stack Trace & Diagnostics
+                  </label>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(jobError.traceback || jobError.message || '');
+                      setCopiedError(true);
+                      setTimeout(() => setCopiedError(false), 2000);
+                    }}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                  >
+                    {copiedError ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedError ? 'Copied to Clipboard' : 'Copy Trace'}
+                  </button>
+                </div>
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-slate-300 max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
+                  {jobError.traceback || jobError.message}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
+              <button
+                onClick={() => {
+                  setIsErrorModalOpen(false);
+                  setActiveNav('observability');
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> View in Observability
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsErrorModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setIsErrorModalOpen(false);
+                    handleStartJob();
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
+                >
+                  <Play className="w-3.5 h-3.5" /> Retry Pipeline Run
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project Workspace Creation Modal */}
       <ProjectCreateModal

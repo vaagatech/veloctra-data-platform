@@ -30,10 +30,13 @@ from .extensions.enrichment_engine import EnrichmentEngine
 from veloctra_connectors.nosql_connector import create_nosql_connector
 from veloctra_connectors.sql_connector import SQLConnector
 from veloctra_connectors.universal_fs import UniversalFileSystem
+from veloctra_connectors.streaming_base import create_streaming_connector, BaseStreamingConnector
 from veloctra_transformers.arrow_engine import ArrowTransformEngine
 from veloctra_transformers.cipher_engine import CipherEngine
 from veloctra_transformers.file_partitioner import FilePartitioner
 from veloctra_transformers.plugin_registry import PluginRegistry
+from veloctra_transformers.schema_validator import DataQualityValidator, SchemaValidationError
+from veloctra_transformers.script_engine import ScriptTransformEngine, ScriptExecutionError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -221,9 +224,15 @@ class PipelineOrchestrator:
             total_rows = await self._run_pipeline()
             return total_rows
         except Exception as exc:
+            import traceback
+            tb = traceback.format_exc()
             logger.error("[Orchestrator:%s] Pipeline execution failed: %s", self.job_id, exc, exc_info=True)
             try:
-                await self.fsm.transition(self.job_id, PipelineState.FAILED, self.tenant_id, {"error": str(exc)})
+                await self.fsm.transition(self.job_id, PipelineState.FAILED, self.tenant_id, {
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                    "traceback": tb,
+                })
             except FSMError:
                 pass
             raise
@@ -269,6 +278,21 @@ class PipelineOrchestrator:
         enrichments = self.config.get("enrichments", [])
         enrichment_engine = EnrichmentEngine(enrichments)
 
+        # Custom Script Transform Engine (UI inline code or CI/CD imported file/module)
+        script_cfg = self.config.get("script") or self.config.get("custom_script") or self.config.get("script_transform")
+        script_engine: Optional[ScriptTransformEngine] = None
+        if script_cfg:
+            if isinstance(script_cfg, str):
+                script_engine = ScriptTransformEngine(script_code=script_cfg)
+            elif isinstance(script_cfg, dict):
+                script_engine = ScriptTransformEngine(
+                    script_code=script_cfg.get("code") or script_cfg.get("script"),
+                    script_path=script_cfg.get("path") or script_cfg.get("file"),
+                    module_name=script_cfg.get("module"),
+                    entrypoint=script_cfg.get("entrypoint", "transform"),
+                    timeout_seconds=float(script_cfg.get("timeout_seconds", 30.0)),
+                )
+
         dest_configs = self.config.get("destinations", [])
         partitioner: Optional[FilePartitioner] = None
 
@@ -288,6 +312,10 @@ class PipelineOrchestrator:
 
         chunk_idx = 0
         total_rows = 0
+        current_high_watermark: Optional[str] = None
+
+        dq_cfg = self.config.get("data_quality") or self.config.get("schema_contracts")
+        validator = DataQualityValidator(contracts=dq_cfg, strict=dq_cfg.get("strict", False)) if dq_cfg else None
 
         extract_state = {"chunk_size": chunk_size}
 
@@ -301,6 +329,39 @@ class PipelineOrchestrator:
                 continue
 
             chunk_start = time.time()
+
+            # ── Data Quality Contract Validation ────────────────────────────────
+            if validator:
+                valid_batch, violations = validator.validate_batch(raw_batch)
+                if violations:
+                    for v in violations:
+                        await self.store.push_dlq(
+                            self.job_id,
+                            self.tenant_id,
+                            v["record"],
+                            f"DataQualityViolation: {', '.join(v['errors'])}",
+                            chunk_idx,
+                        )
+                    if dq_cfg.get("strict", False) and valid_batch.num_rows < raw_batch.num_rows:
+                        raise SchemaValidationError(f"Batch {chunk_idx} failed strict data quality contracts ({len(violations)} violations)")
+                raw_batch = valid_batch
+                if raw_batch.num_rows == 0:
+                    chunk_idx += 1
+                    del raw_batch
+                    continue
+
+            # ── Track High-Watermark for Delta Sync ──────────────────────────────
+            for src in sources_list:
+                delta_cfg = src.get("delta", {}) or {}
+                wm_col = delta_cfg.get("watermark_column") or src.get("watermark_column")
+                if wm_col and wm_col in raw_batch.schema.names:
+                    col_vals = raw_batch[wm_col].to_pylist()
+                    valid_vals = [v for v in col_vals if v is not None]
+                    if valid_vals:
+                        batch_max = max(valid_vals)
+                        batch_max_str = str(batch_max)
+                        if current_high_watermark is None or batch_max_str > current_high_watermark:
+                            current_high_watermark = batch_max_str
 
             # ── Adaptive MemoryGuard Inspection ─────────────────────────────────
             chunk_size, guard_event = self.memory_guard.inspect_and_adapt(
@@ -330,6 +391,10 @@ class PipelineOrchestrator:
                     # 2. Data Enrichment
                     batch = await enrichment_engine.apply_enrichments(batch)
 
+                    # 3. Custom Script Execution (Heavy UI / CI-CD processing)
+                    if script_engine:
+                        batch = await script_engine.process_batch(batch)
+
                     if cipher_engine and enc_cfg.get("fields_to_encrypt"):
                         batch = cipher_engine.encrypt_batch_fields(batch, enc_cfg["fields_to_encrypt"])
 
@@ -343,7 +408,7 @@ class PipelineOrchestrator:
                     self.job_id, chunk_idx, transform_exc,
                 )
                 batch = await self._fallback_row_by_row_transform(
-                    raw_batch, rules_engine, enrichment_engine, transform_engine, cipher_engine, enc_cfg, custom_plugins, chunk_idx
+                    raw_batch, rules_engine, enrichment_engine, transform_engine, cipher_engine, enc_cfg, custom_plugins, chunk_idx, script_engine
                 )
 
             if batch.num_rows == 0:
@@ -382,6 +447,7 @@ class PipelineOrchestrator:
                 chunk_index=chunk_idx,
                 state=PipelineState.COMPLETED.value,
                 rows_written=total_rows,
+                watermark_value=current_high_watermark,
             )
 
             chunk_elapsed = time.time() - chunk_start
@@ -402,6 +468,7 @@ class PipelineOrchestrator:
                 "cpu_percent": cpu_info,
                 "chunk_size": chunk_size,
                 "chunk_latency_ms": round(chunk_elapsed * 1000, 2),
+                "watermark_value": current_high_watermark,
                 "timestamp": time.time(),
             })
 
@@ -431,6 +498,7 @@ class PipelineOrchestrator:
         enc_cfg: Dict[str, Any],
         custom_plugins: Dict[str, Any],
         chunk_idx: int,
+        script_engine: Optional[Any] = None,
     ) -> pa.RecordBatch:
         """
         Slow path: Iterates row-by-row when vectorised batch processing encounters corrupt records.
@@ -445,6 +513,9 @@ class PipelineOrchestrator:
                     continue
 
                 batch = await enrichment_engine.apply_enrichments(batch)
+
+                if script_engine:
+                    batch = await script_engine.process_batch(batch)
 
                 if cipher_engine and enc_cfg.get("fields_to_encrypt"):
                     batch = cipher_engine.encrypt_batch_fields(batch, enc_cfg["fields_to_encrypt"])
@@ -539,22 +610,49 @@ class PipelineOrchestrator:
         sources: List[Dict[str, Any]],
         state: Dict[str, int],
     ) -> AsyncGenerator[pa.RecordBatch, None]:
-        """Extracts data from multiple source systems sequentially or concurrently."""
+        """Extracts data from multiple source systems with automated Delta / Watermark injection."""
+        pipeline_id = self.config.get("pipeline_id")
+        last_committed_wm = await self.store.get_last_watermark(self.job_id, pipeline_id=pipeline_id)
+
         for src in sources:
             stype = src.get("type", "database")
+            delta_cfg = src.get("delta", {}) or {}
+            wm_col = delta_cfg.get("watermark_column") or src.get("watermark_column")
+            wm_type = delta_cfg.get("watermark_type", "timestamp").lower()
+            init_wm = delta_cfg.get("initial_watermark")
+            active_wm = last_committed_wm if last_committed_wm is not None else init_wm
 
             if stype == "database":
+                wm_clause: Optional[str] = None
+                if wm_col and active_wm is not None:
+                    if wm_type in ("int", "integer", "bigint", "float", "numeric", "number"):
+                        wm_clause = f"{wm_col} > {active_wm}"
+                    else:
+                        safe_val = str(active_wm).replace("'", "''")
+                        wm_clause = f"{wm_col} > '{safe_val}'"
+                    logger.info(
+                        "[Orchestrator:%s] Delta sync enabled for source '%s' (watermark: %s)",
+                        self.job_id, src.get("name", "db"), active_wm,
+                    )
+
                 cb = circuit_registry.get_or_create(f"sql_extract_{src.get('name', 'db')}_{self.job_id}")
                 async with cb:
                     async with SQLConnector(src["connection_string"]) as conn:
-                        async for batch in conn.stream_read(src["query"], state["chunk_size"]):
+                        async for batch in conn.stream_read(src["query"], state["chunk_size"], watermark_clause=wm_clause):
                             yield batch
 
             elif stype == "nosql":
                 adapter = create_nosql_connector(src)
                 async with adapter:
-                    async for batch in adapter.stream_read(src.get("collection", "default"), src.get("query"), chunk_size=state["chunk_size"]):
-                        yield batch
+                    if hasattr(adapter, "stream_read"):
+                        async for batch in adapter.stream_read(
+                            src.get("collection", "default"),
+                            src.get("query"),
+                            chunk_size=state["chunk_size"],
+                            watermark_column=wm_col if active_wm is not None else None,
+                            last_watermark=active_wm,
+                        ):
+                            yield batch
 
             elif stype in ("file", "csv", "zip", "parquet"):
                 from veloctra_connectors.file_connector import FileConnector
@@ -575,6 +673,18 @@ class PipelineOrchestrator:
                 ) as conn:
                     async for batch in conn.stream_read():
                         yield batch
+
+            elif (
+                stype in ("streaming", "kafka", "streaming_kafka", "rabbitmq", "amqp", "sqs", "aws_sqs", "redis", "redis_stream")
+                or src.get("plugin_file")
+                or src.get("plugin_module")
+            ):
+                cb = circuit_registry.get_or_create(f"stream_extract_{src.get('name', stype)}_{self.job_id}")
+                async with cb:
+                    conn = create_streaming_connector(src)
+                    async with conn:
+                        async for batch in conn.stream_read(state["chunk_size"]):
+                            yield batch
 
             else:
                 module_name = f"veloctra_connectors.{stype}_connector"
@@ -625,22 +735,49 @@ class PipelineOrchestrator:
             if target_batch.num_rows == 0:
                 continue
 
+            # CDC Split: Deletes vs Upserts
+            cdc_delete_batch = None
+            cdc_upsert_batch = target_batch
+            if "_cdc_op" in target_batch.schema.names:
+                import pyarrow.compute as pc
+                op_col = target_batch["_cdc_op"]
+                del_mask = pc.equal(op_col, "DELETE")
+                cdc_delete_batch = target_batch.filter(del_mask)
+                cdc_upsert_batch = target_batch.filter(pc.invert(del_mask))
+
             dtype = dest["type"]
             cb = circuit_registry.get_or_create(f"load_{dest.get('name', 'dest')}_{self.job_id}")
             async with cb:
                 if dtype == "database":
                     async with SQLConnector(dest["connection_string"]) as conn:
-                        match_keys = dest.get("match_keys")
-                        if match_keys:
-                            await conn.bulk_upsert(dest["table"], target_batch, match_keys)
-                        else:
-                            await conn.bulk_insert(dest["table"], target_batch)
+                        match_keys = dest.get("match_keys") or []
+                        if cdc_delete_batch and cdc_delete_batch.num_rows > 0 and match_keys:
+                            await conn.bulk_delete(dest["table"], cdc_delete_batch, match_keys)
+                        if cdc_upsert_batch.num_rows > 0:
+                            clean_cols = [c for c in cdc_upsert_batch.schema.names if not c.startswith("_cdc_")]
+                            load_batch = cdc_upsert_batch.select(clean_cols) if clean_cols else cdc_upsert_batch
+                            if match_keys:
+                                await conn.bulk_upsert(dest["table"], load_batch, match_keys)
+                            else:
+                                await conn.bulk_insert(dest["table"], load_batch)
 
                 elif dtype == "nosql":
                     adapter = create_nosql_connector(dest)
                     async with adapter:
-                        records = target_batch.to_pylist()
-                        await adapter.bulk_write(dest.get("collection", "processed_records"), records, dest.get("upsert_key"))
+                        records = cdc_upsert_batch.to_pylist() if cdc_upsert_batch.num_rows > 0 else []
+                        if records:
+                            await adapter.bulk_write(dest.get("collection", "processed_records"), records, dest.get("upsert_key"))
+
+                elif (
+                    dtype in ("streaming", "kafka", "streaming_kafka", "rabbitmq", "amqp", "sqs", "aws_sqs", "redis", "redis_stream")
+                    or dest.get("plugin_file")
+                    or dest.get("plugin_module")
+                ):
+                    conn = create_streaming_connector(dest)
+                    async with conn:
+                        clean_cols = [c for c in cdc_upsert_batch.schema.names if not c.startswith("_cdc_")]
+                        load_batch = cdc_upsert_batch.select(clean_cols) if clean_cols else cdc_upsert_batch
+                        await conn.publish_batch(load_batch, **dest)
 
                 elif dtype in ("file", "csv", "parquet", "storage"):
                     out_path_str = dest.get("output_dir") or dest.get("path") or "./output"

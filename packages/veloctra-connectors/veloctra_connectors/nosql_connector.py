@@ -80,12 +80,23 @@ class MongoConnector(BaseNoSQLConnector):
         query: Optional[Dict] = None,
         projection: Optional[List[str]] = None,
         chunk_size: int = 10_000,
+        watermark_column: Optional[str] = None,
+        last_watermark: Optional[Any] = None,
     ) -> AsyncGenerator[pa.RecordBatch, None]:
         if self._db is None:
             raise RuntimeError("Mongo database connection is not initialized. Call connect() first.")
         coll = self._db[collection]
+        final_query = dict(query or {})
+        if watermark_column and last_watermark is not None:
+            if watermark_column in final_query and isinstance(final_query[watermark_column], dict):
+                final_query[watermark_column]["$gt"] = last_watermark
+            else:
+                final_query[watermark_column] = {"$gt": last_watermark}
+
         proj_dict = {f: 1 for f in projection} if projection else None
-        cursor = coll.find(query or {}, proj_dict)
+        cursor = coll.find(final_query, proj_dict)
+        if watermark_column:
+            cursor = cursor.sort([(watermark_column, 1)])
 
         buffer: List[Dict] = []
         async for doc in cursor:

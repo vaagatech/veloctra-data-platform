@@ -1,7 +1,10 @@
-# ────────────────────────────────────────────────────────────────────────────────
-# Stage 1 — Builder: install Python dependencies
-# ────────────────────────────────────────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+# ==============================================================================
+# Veloctra Data Platform — Ultra-Lightweight Multi-Stage Dockerfile
+# Optimized for small pods, edge micro-VMs, and low-memory environments (< 40MB RSS)
+# ==============================================================================
+
+# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -13,37 +16,39 @@ COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Stage 2 — Runtime: minimal image
-# ────────────────────────────────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+# ── Stage 2: Minimal Runtime ──────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup --system etl && adduser --system --ingroup etl etl_user
+# Non-root user for enterprise container security
+RUN addgroup --system veloctra && adduser --system --ingroup veloctra veloctra_user
 
-# Copy installed packages from builder
+# Copy installed Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application source
-COPY enterprise_etl_engine/ ./enterprise_etl_engine/
+# Copy application packages and source
+COPY packages/ ./packages/
+COPY configs/ ./configs/
+COPY plugins/ ./plugins/
+COPY docs/ ./docs/
 COPY .env.example .env.example
 
-# UI static assets (built separately via npm, copied in CI)
-COPY enterprise_etl_engine/ui/dist/ ./enterprise_etl_engine/ui/dist/
+# Set PYTHONPATH to include all monorepo packages
+ENV PYTHONPATH="/app/packages/veloctra-core:/app/packages/veloctra-security:/app/packages/veloctra-state:/app/packages/veloctra-resilience:/app/packages/veloctra-connectors:/app/packages/veloctra-transformers:/app/packages/veloctra-orchestrator:/app/packages/veloctra-api:/app"
+ENV PYTHONUNBUFFERED=1
 
-RUN chown -R etl_user:etl /app
-USER etl_user
+RUN chown -R veloctra_user:veloctra /app
+USER veloctra_user
 
 EXPOSE 8000
 
-# Graceful shutdown support — uvicorn handles SIGTERM natively
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# Container Healthcheck
+HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-CMD ["uvicorn", "enterprise_etl_engine.api.main:app", \
+CMD ["uvicorn", "veloctra_api.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--workers", "1", \
-     "--timeout-graceful-shutdown", "30"]
+     "--timeout-graceful-shutdown", "15"]

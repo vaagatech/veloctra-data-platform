@@ -29,7 +29,7 @@ case "$1" in
             PID=$(cat "$PID_FILE")
             echo " Status      : 🟢 RUNNING"
             echo " Process PID : $PID"
-            echo " Web Console : http://localhost:8000"
+            echo " Web Console : http://localhost:${PORT:-8008}"
             echo " Log File    : $LOG_FILE"
         else
             echo " Status      : 🔴 STOPPED"

@@ -1,0 +1,33 @@
+# =====================================================================
+# Veloctra Pluggable Streaming Pipeline Configuration
+# Demonstrates loading a custom streaming connector plugin dynamically
+# from a file or external module without modifying platform core code.
+# =====================================================================
+
+pipeline:
+  name: "custom_nats_to_redis_stream"
+  description: "Bridges custom NATS JetStream events to Redis Streams"
+  version: "1.0.0"
+
+sources:
+  - name: "nats_event_ingress"
+    type: "streaming"
+    plugin_file: "plugins/custom_nats_connector.py"
+    class_name: "CustomNatsConnector"
+    subject: "telemetry.sensors"
+    servers:
+      - "nats://localhost:4222"
+
+destinations:
+  - name: "redis_stream_egress"
+    type: "redis_stream"
+    redis_url: "redis://localhost:6379"
+    stream_key: "sensor_stream_v1"
+
+settings:
+  chunk_size: 2000
+  resilience:
+    max_retries: 3
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout_seconds: 30

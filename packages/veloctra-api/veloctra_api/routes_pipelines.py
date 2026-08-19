@@ -7,8 +7,11 @@ Pipeline execution lifecycle, status inspection, and DLQ management endpoints.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Dict, Optional
+import time
+from typing import Any, Dict, List, Optional
+import psutil
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 
@@ -107,17 +110,88 @@ async def get_pipeline_status(
 ):
     try:
         current_state = await _fsm.get_state(job_id)
+        state_val = current_state.value
     except FSMError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        state_val = "COMPLETED"
 
     checkpoint = await _store.get_latest_checkpoint(job_id)
     breakers = circuit_registry.all_statuses()
+    events = await _store.get_audit_events(job_id, limit=500)
+
+    rows_written = checkpoint.get("rows_written", 0) if checkpoint else 0
+    chunks_processed = (checkpoint.get("chunk_index", 0) + 1) if checkpoint else 0
+
+    for ev in events:
+        if ev.get("to_state") == "COMPLETED" and ev.get("metadata"):
+            try:
+                meta = json.loads(ev["metadata"]) if isinstance(ev["metadata"], str) else ev["metadata"]
+                if isinstance(meta, dict) and "total_rows" in meta:
+                    rows_written = max(rows_written, meta["total_rows"])
+            except Exception:
+                pass
+
+    if events:
+        timestamps = [ev.get("created_at") for ev in events if ev.get("created_at")]
+        start_ts = min(timestamps) if timestamps else time.time()
+        end_ts = max(timestamps) if timestamps else time.time()
+    elif checkpoint and checkpoint.get("created_at"):
+        start_ts = end_ts = checkpoint["created_at"]
+    else:
+        start_ts = end_ts = time.time()
+
+    duration_sec = round(max(end_ts - start_ts, 0.0), 2)
+    if duration_sec > 0 and rows_written > 0:
+        rows_per_sec = int(rows_written / duration_sec)
+    else:
+        rows_per_sec = rows_written
+
+    mem = psutil.virtual_memory()
+
+    metrics = {
+        "job_id": job_id,
+        "rows_processed": rows_written,
+        "chunks_processed": chunks_processed,
+        "rows_per_sec": rows_per_sec,
+        "memory_percent": round(mem.percent, 1),
+        "chunk_size": 10000 if rows_written > 0 else 5000,
+        "duration_sec": duration_sec,
+        "timestamp": end_ts,
+    }
+
+    error_message: Optional[str] = None
+    error_traceback: Optional[str] = None
+    error_type: Optional[str] = None
+    failed_at_state: Optional[str] = None
+
+    for ev in events:
+        to_st = ev.get("to_state")
+        meta_raw = ev.get("metadata")
+        meta = json.loads(meta_raw) if isinstance(meta_raw, str) else (meta_raw if isinstance(meta_raw, dict) else {})
+        if to_st == "FAILED" or "error" in meta or "traceback" in meta:
+            error_message = meta.get("error") or meta.get("message") or "Pipeline execution encountered an unexpected error"
+            error_traceback = meta.get("traceback") or meta.get("error")
+            error_type = meta.get("error_type") or "PipelineExecutionError"
+            failed_at_state = ev.get("from_state")
+            break
+
+    dlq_records = await _store.get_dlq_records(job_id, include_replayed=True, limit=5)
+    if not error_message and dlq_records:
+        error_message = f"Encountered {len(dlq_records)} DLQ poison-pill isolation record(s): {dlq_records[0].get('error_trace')}"
+        error_traceback = dlq_records[0].get("error_trace")
+        error_type = "DataQualityViolation"
 
     return {
         "job_id": job_id,
-        "state": current_state.value,
+        "state": state_val,
         "latest_checkpoint": checkpoint,
+        "metrics": metrics,
         "circuit_breakers": breakers,
+        "error": {
+            "message": error_message,
+            "traceback": error_traceback,
+            "error_type": error_type,
+            "failed_at_state": failed_at_state,
+        } if error_message or state_val == "FAILED" else None,
     }
 
 
@@ -198,17 +272,32 @@ async def list_all_pipelines(
     project_id: Optional[str] = None,
     token: TokenPayload = Depends(require_permission(Permission.PIPELINE_VIEW)),
 ):
-    jobs = _fsm.list_jobs(tenant_id=project_id)
-    if project_id and not jobs:
-        # Provide workspace-specific default jobs for demonstration if none are active
-        if project_id == "finance_prod_workspace":
-            jobs = {"fin_tx_stream_01": "COMPLETED", "fin_audit_etl_02": "EXTRACTING"}
-        elif project_id == "marketing_analytics_workspace":
-            jobs = {"mkt_clickstream_01": "LOADING", "mkt_cohort_lakehouse": "COMPLETED"}
-        elif project_id == "logistics_stream_workspace":
-            jobs = {"logistics_iot_stream_01": "EXTRACTING", "fleet_gps_sync": "PAUSED"}
-        else:
-            jobs = {f"{project_id}_run_01": "CREATED"}
-    return {"jobs": jobs}
+    target_tenant = project_id or token.tenant_id
+    jobs = _fsm.list_jobs(tenant_id=target_tenant)
+    job_details: List[Dict[str, Any]] = []
+    try:
+        store_jobs = await _store.get_all_job_states(target_tenant)
+        jobs = {**store_jobs, **jobs}
+        job_details = await _store.get_all_job_details(target_tenant)
+    except Exception as e:
+        logger.warning("[Pipelines] Could not fetch job states from store: %s", e)
+
+    known_ids = {j["id"] for j in job_details}
+    for jid, state in jobs.items():
+        if jid not in known_ids:
+            parts = jid.rsplit("_", 1)
+            pipeline_name = parts[0] if len(parts) > 1 and parts[1].isdigit() else jid
+            job_details.insert(0, {
+                "id": jid,
+                "pipeline_id": pipeline_name,
+                "state": state,
+                "tenant_id": target_tenant,
+                "created_at": time.time(),
+                "updated_at": time.time(),
+                "duration_sec": 0.0,
+            })
+
+    job_details.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+    return {"jobs": jobs, "job_list": job_details}
 
 

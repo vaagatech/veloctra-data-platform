@@ -109,6 +109,56 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
   
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
+  const handleFetchSchemas = async () => {
+    setIsLoading(true);
+    let allTables: any[] = [];
+    
+    const fetchForConnId = async (connId: string) => {
+      if (!connId) return;
+      const conn = availableConnections.find(c => c.id === connId || c.name === connId);
+      const connStr = conn ? (conn.url || (conn as any).dsn_or_url || conn.id) : connId;
+      if (!connStr) return;
+      try {
+        const res = await fetch('/configs/schema-discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ connection_string: connStr }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const tables = (data.tables || []).map((t: any) => ({
+            ...t,
+            table_name: t.table_name,
+            connection_label: conn?.name || connId
+          }));
+          allTables = [...allTables, ...tables];
+        }
+      } catch (err) {
+        console.error("Schema fetch error", err);
+      }
+    };
+
+    if (wizardConfig?.primarySources) {
+      for (const s of wizardConfig.primarySources) {
+        if (s.connection_id) {
+          await fetchForConnId(s.connection_id);
+        }
+      }
+    }
+    if (wizardConfig?.secondarySources) {
+      for (const s of wizardConfig.secondarySources) {
+        if (s.connection_id) {
+          await fetchForConnId(s.connection_id);
+        }
+      }
+    }
+
+    if (allTables.length > 0) {
+      setInternalSchemaTables(allTables);
+    }
+    setIsLoading(false);
+  };
+
   useEffect(() => {
     if (wizardConfig) {
       if (wizardConfig.primarySources) {
@@ -121,83 +171,45 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
           join_key: '',
           target_field: '_flatten_'
         })));
-      }setDestConfigs(wizardConfig.destinations.map((d: any) => ({
-        ...d,
-        table_or_collection: '',
-        condition: ''
-      })));
-    }
-  }, [wizardConfig]);
-
-  const handleFetchSchemas = async () => {
-    setIsLoading(true);
-    let allTables: any[] = [];
-    
-    const fetchForConnId = async (connId: string, prefix: string) => {
-      const conn = availableConnections.find(c => c.id === connId);
-      if (!conn) return;
-      try {
-        const res = await fetch('/configs/schema-discover', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ connection_string: conn.dsn_or_url }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          // prefix table names so they don't collide
-          const tables = (data.tables || []).map((t: any) => ({
-            ...t,
-            table_name: `${prefix}_${t.table_name}`
-          }));
-          allTables = [...allTables, ...tables];
-        }
-      } catch (err) {
-        console.error("Schema fetch error", err);
       }
-    };
-
-    if (wizardConfig?.primarySources) {
-      for (let i = 0; i < wizardConfig.primarySources.length; i++) {
-        await fetchForConnId(wizardConfig.primarySources[i].connection_id, `primary_${i}`);
+      if (wizardConfig.destinations) {
+        setDestConfigs(wizardConfig.destinations.map((d: any) => ({
+          ...d,
+          table_or_collection: d.table || d.collection || '',
+          condition: d.condition || ''
+        })));
       }
+      handleFetchSchemas();
     }
-    if (wizardConfig?.secondarySources) {
-      for (let i = 0; i < wizardConfig.secondarySources.length; i++) {
-        await fetchForConnId(wizardConfig.secondarySources[i].connection_id, `enrich_${i}`);
-      }
-    }
-
-    setInternalSchemaTables(allTables);
-    setIsLoading(false);
-  };
+  }, [wizardConfig, availableConnections]);
 
   const handleSavePipeline = async () => {
     if (!wizardConfig || !projectId) return;
     setSaveStatus("Saving...");
     
-    
+    const pipelineId = wizardConfig.pipelineId || projectId || 'default_pipeline';
     const configObj = {
-      project_id: "default_workspace", // Or whatever we can pass, ideally selectedWorkspace
-      pipeline_id: projectId,
-      mode: "hybrid",
+      project_id: projectId,
+      pipeline_id: pipelineId,
+      mode: "streaming",
       sources: primaryConfigs.map(p => {
         const c = availableConnections.find(conn => conn.id === p.connection_id);
         return {
+          name: c?.id || p.connection_id,
           type: c?.type || "database",
-          connection_id: c?.id,
-          connection_string: c?.dsn_or_url,
+          connection_string: c?.url || (c as any)?.dsn_or_url || p.connection_id,
           query: p.query,
-          chunk_size: 5000
+          chunk_size: 10000
         };
       }),
       enrichments: secondaryConfigs.map(s => {
         const c = availableConnections.find(conn => conn.id === s.connection_id);
         return {
           source: {
+            name: c?.id || s.connection_id,
             type: c?.type || "database",
-            connection_id: c?.id,
-            connection_string: c?.dsn_or_url,
-            table: s.query, // using query field as table/collection for enrichments
+            connection_string: c?.url || (c as any)?.dsn_or_url,
+            table: s.query,
           },
           join_key: s.join_key,
           target_field: s.target_field
@@ -206,12 +218,11 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
       destinations: destConfigs.map(d => {
         const c = availableConnections.find(conn => conn.id === d.connection_id);
         return {
-          name: c?.id,
+          name: c?.id || d.connection_id,
           type: c?.type || "database",
-          connection_string: c?.dsn_or_url,
-          table: d.table_or_collection,
-          condition: d.condition,
-          match_keys: ['id']
+          connection_string: c?.url || (c as any)?.dsn_or_url,
+          table: d.table_or_collection || 'processed_data',
+          batch_size: 10000
         };
       }),
       mappings: fieldMappings
@@ -219,7 +230,6 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
 
     try {
       const yamlStr = JSON.stringify(configObj, null, 2);
-      const pipelineId = wizardConfig.pipelineId || 'default_pipeline';
       const res = await fetch(`/configs/${pipelineId}`, {
         method: 'PUT',
         headers: {
@@ -232,7 +242,7 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
       if (!res.ok) {
         throw new Error('Save failed');
       }
-      setSaveStatus("Saved successfully!");
+      setSaveStatus("Saved successfully to Engine!");
     } catch (err: any) {
       setSaveStatus(`Error: ${err.message}`);
     }
@@ -242,6 +252,16 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
   useEffect(() => {
     const initialNodes: Node[] = [];
     let yOffset = 50;
+
+    let activeMappings = { ...fieldMappings };
+    if (Object.keys(activeMappings).length === 0 && (internalSchemaTables || []).length > 0) {
+      internalSchemaTables.forEach((tbl: any) => {
+        (tbl.columns || []).forEach((col: string) => {
+          activeMappings[`${tbl.table_name}.${col}`] = col;
+        });
+      });
+      setFieldMappings(activeMappings);
+    }
 
     (internalSchemaTables || []).forEach((tbl: any) => {
       initialNodes.push({
@@ -259,40 +279,42 @@ export const VisualDataModeler: React.FC<VisualDataModelerProps> = ({
       yOffset += 40 + (tbl.columns.length * 28) + 20;
     });
 
-    const uniqueTargetFields = Array.from(new Set(Object.values(fieldMappings)));
+    const destName = wizardConfig?.destinations?.[0]?.connection_id || 'Destination System';
+    const destConn = availableConnections.find(c => c.id === destName || c.name === destName);
+    const uniqueTargetFields = Array.from(new Set(Object.values(activeMappings).filter(Boolean)));
     if (uniqueTargetFields.length === 0) {
-        uniqueTargetFields.push('id');
+      uniqueTargetFields.push('id');
     }
 
     initialNodes.push({
       id: 'target-document',
       type: 'documentNode',
-      position: { x: 600, y: 150 },
+      position: { x: 580, y: 50 },
       data: { 
-        label: 'Destination Schema', 
-        fields: uniqueTargetFields.map(f => ({ name: f, type: 'Mixed' }))
+        label: destConn?.name || destName, 
+        fields: uniqueTargetFields.map(f => ({ name: f, type: 'Target Field' }))
       },
     });
 
     setNodes(initialNodes);
 
     const newEdges: Edge[] = [];
-    Object.entries(fieldMappings).forEach(([sourceKey, targetField]) => {
-        const [tableName, colName] = sourceKey.split('.');
-        if (tableName && colName) {
-            newEdges.push({
-                id: `e-${sourceKey}-${targetField}`,
-                source: `source-${tableName}`,
-                target: 'target-document',
-                sourceHandle: sourceKey,
-                targetHandle: `target.${targetField}`,
-                animated: true,
-                style: { stroke: '#4f46e5', strokeWidth: 2 }
-            });
-        }
+    Object.entries(activeMappings).forEach(([sourceKey, targetField]) => {
+      const [tableName, colName] = sourceKey.split('.');
+      if (tableName && colName) {
+        newEdges.push({
+          id: `e-${sourceKey}-${targetField}`,
+          source: `source-${tableName}`,
+          target: 'target-document',
+          sourceHandle: sourceKey,
+          targetHandle: `target.${targetField}`,
+          animated: true,
+          style: { stroke: '#4f46e5', strokeWidth: 2 }
+        });
+      }
     });
     setEdges(newEdges);
-  }, [internalSchemaTables, fieldMappings]);
+  }, [internalSchemaTables, fieldMappings, wizardConfig, availableConnections]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);

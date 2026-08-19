@@ -20,11 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from veloctra_core.settings import get_settings
 from veloctra_security.security import sanitize_config
 from veloctra_api import (
-    routes_auth, routes_config, routes_pipelines, routes_projects, routes_rbac, routes_observability, routes_data_crud, websocket
+    routes_auth, routes_config, routes_pipelines, routes_projects, routes_rbac, routes_observability, routes_data_crud, routes_schedules, routes_scripts, websocket
 )
-
-
-
 
 settings = get_settings()
 
@@ -40,11 +37,13 @@ async def lifespan(app: FastAPI):
     logger.info("[Startup] Initialising Veloctra Engine…")
     try:
         await routes_pipelines.init_pipeline_resources()
+        await routes_schedules.init_scheduler()
     except Exception as exc:
         logger.warning("[Startup] Pipeline resources init warning: %s", exc)
     yield
     logger.info("[Shutdown] Draining connections…")
     try:
+        await routes_schedules.shutdown_scheduler()
         await routes_pipelines.shutdown_pipeline_resources()
     except Exception as exc:
         logger.warning("[Shutdown] Pipeline resources cleanup warning: %s", exc)
@@ -85,6 +84,8 @@ app.include_router(routes_projects.router)
 app.include_router(routes_rbac.router)
 app.include_router(routes_observability.router)
 app.include_router(routes_data_crud.router)
+app.include_router(routes_schedules.router)
+app.include_router(routes_scripts.router)
 app.include_router(websocket.router)
 
 

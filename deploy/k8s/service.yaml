@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: veloctra-service
+  namespace: veloctra
+  labels:
+    app.kubernetes.io/name: veloctra-engine
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: veloctra-engine
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: veloctra-config
+  namespace: veloctra
+data:
+  PORT: "8000"
+  LOG_LEVEL: "info"
+  DB_TYPE: "sqlite"
+  SQLITE_PATH: "/app/state_data/state.db"
+  PROMETHEUS_METRICS_ENABLED: "true"
+  DEFAULT_CHUNK_SIZE: "5000"
+  MAX_MEMORY_PERCENT: "75.0"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: veloctra-secrets
+  namespace: veloctra
+type: Opaque
+stringData:
+  APP_JWT_SECRET_KEY: "change_in_production_jwt_secret"
+  APP_ENCRYPTION_KEY: "change_in_production_base64_32bytes_key="

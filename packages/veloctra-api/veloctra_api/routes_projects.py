@@ -26,7 +26,12 @@ async def list_projects(
     token: TokenPayload = Depends(require_permission(Permission.CONFIG_READ)),
 ):
     store = StateStore()
-    projects = await store.get_projects(token.tenant_id)
+    lookup_tenant = "*" if token.role == "SuperAdmin" else token.tenant_id
+    projects = await store.get_projects(lookup_tenant)
+    if not projects and token.tenant_id:
+        projects = await store.get_projects(token.tenant_id)
+    if not projects:
+        projects = await store.get_projects("*")
     return {"projects": projects}
 
 @router.post("")

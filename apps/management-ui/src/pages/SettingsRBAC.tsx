@@ -19,14 +19,14 @@ export const SettingsRBAC: React.FC<SettingsRBACProps> = ({ token }) => {
   // New user form state
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState('Developer');
-  const [newGroup, setNewGroup] = useState('Finance Data Engineering');
-  const [newTenant, setNewTenant] = useState('finance_prod_workspace');
+  const [newGroup, setNewGroup] = useState('Healthcare Data Engineering');
+  const [newTenant, setNewTenant] = useState('healthcare_prod_workspace');
   const [userMsg, setUserMsg] = useState<string | null>(null);
 
   // New group form state
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupRole, setNewGroupRole] = useState('Developer');
-  const [newGroupWorkspace, setNewGroupWorkspace] = useState('finance_prod_workspace');
+  const [newGroupWorkspace, setNewGroupWorkspace] = useState('healthcare_prod_workspace');
 
   const fetchRBACData = async () => {
     try {

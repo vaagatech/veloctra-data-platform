@@ -1,20 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layers, Database, CheckCircle2, Search, Table, Save } from 'lucide-react';
 
 
 interface MultiTableConsolidatorProps {
   token: string;
   projectId: string;
+  availableConnections?: any[];
+  wizardConfig?: any;
   onSaved: () => void;
 }
 
 export const MultiTableConsolidator: React.FC<MultiTableConsolidatorProps> = ({
   token,
   projectId,
+  availableConnections = [],
+  wizardConfig,
   onSaved,
 }) => {
-  const [connectionString, setConnectionString] = useState('sqlite:///demo_source_nm.db');
-  const [targetCollection, setTargetCollection] = useState('unified_enterprise_orders_store');
+  const defaultConn = wizardConfig?.primarySources?.[0]?.connection_id
+    ? (availableConnections.find(c => c.id === wizardConfig.primarySources[0].connection_id)?.url || wizardConfig.primarySources[0].connection_id)
+    : (availableConnections[0]?.url || 'raw_claims_zip_file');
+
+  const [connectionString, setConnectionString] = useState(defaultConn);
+  const [targetCollection, setTargetCollection] = useState('unified_healthcare_records');
   const [discovering, setDiscovering] = useState(false);
   const [discoveredTables, setDiscoveredTables] = useState<any[]>([]);
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
@@ -22,6 +30,24 @@ export const MultiTableConsolidator: React.FC<MultiTableConsolidatorProps> = ({
   
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (wizardConfig?.primarySources?.[0]?.connection_id) {
+      const connId = wizardConfig.primarySources[0].connection_id;
+      const found = availableConnections.find(c => c.id === connId);
+      if (found?.url) {
+        setConnectionString(found.url);
+      } else {
+        setConnectionString(connId);
+      }
+    }
+  }, [wizardConfig, availableConnections]);
+
+  useEffect(() => {
+    if (connectionString) {
+      handleDiscoverSchema();
+    }
+  }, [connectionString]);
 
   const handleDiscoverSchema = async () => {
     setDiscovering(true);

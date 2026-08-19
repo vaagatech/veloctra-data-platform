@@ -10,7 +10,6 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -218,16 +217,138 @@
       font-weight: 600;
     }
 
-    pre code { background: transparent; padding: 0; color: #e2e8f0; font-weight: 400; }
+        /* Mermaid & Diagram Fallback */
+    pre.mermaid {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: #0f172a !important;
+      padding: 0 !important;
+    }
 
-    .mermaid-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
+    /* Sellable Sharding Canvas System */
+    .arch-canvas {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 28px;
+      margin: 28px 0 36px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.04), 0 4px 8px -2px rgba(15, 23, 42, 0.02);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sharding-layer {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 14px;
-      padding: 24px;
-      margin: 24px 0;
-      text-align: center;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+      padding: 20px 22px;
+      margin-bottom: 16px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .sharding-layer:last-child { margin-bottom: 0; }
+    .sharding-layer:hover { border-color: #cbd5e1; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03); }
+
+    .sharding-layer.layer-1 { border-top: 3px solid #4f46e5; background: linear-gradient(180deg, #fbfbfe 0%, #ffffff 100%); }
+    .sharding-layer.layer-2 { border-top: 3px solid #0284c7; background: linear-gradient(180deg, #f7fcff 0%, #ffffff 100%); }
+    .sharding-layer.layer-3 { border-top: 3px solid #7c3aed; background: linear-gradient(180deg, #fdfbfe 0%, #ffffff 100%); }
+    .sharding-layer.layer-4 { border-top: 3px solid #d97706; background: linear-gradient(180deg, #fffdf8 0%, #ffffff 100%); }
+    .sharding-layer.layer-5 { border-top: 3px solid #059669; background: linear-gradient(180deg, #f6fdf9 0%, #ffffff 100%); }
+
+    .layer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .layer-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: -0.01em;
+    }
+
+    .layer-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+    .badge-cyan   { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+    .badge-purple { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+    .badge-amber  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+    .badge-emerald{ background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+
+    .arch-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .arch-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+
+    .arch-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .arch-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+      border-color: #cbd5e1;
+    }
+
+    .card-top { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+    .card-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .card-icon-box.icon-indigo  { background: #eef2ff; color: #4f46e5; }
+    .card-icon-box.icon-cyan    { background: #ecfeff; color: #0284c7; }
+    .card-icon-box.icon-purple  { background: #f5f3ff; color: #7c3aed; }
+    .card-icon-box.icon-amber   { background: #fffbeb; color: #d97706; }
+    .card-icon-box.icon-emerald { background: #ecfdf5; color: #059669; }
+
+    .card-meta { flex: 1; }
+    .card-title { font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.3; margin-bottom: 2px; }
+    .card-sub { font-size: 11px; font-family: var(--mono); color: #64748b; font-weight: 500; }
+
+    .card-features { list-style: none; margin: 8px 0; padding: 0; }
+    .card-features li { font-size: 12px; color: #334155; margin-bottom: 4px; display: flex; align-items: flex-start; gap: 6px; line-height: 1.4; }
+    .card-features li::before { content: "•"; color: #4f46e5; font-weight: bold; }
+
+    .card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e2e8f0; }
+    .card-tag { font-size: 10px; font-weight: 600; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; }
+
+    .flow-connector { display: flex; align-items: center; justify-content: center; margin: 8px 0; position: relative; }
+    .flow-line { height: 24px; width: 2px; background: repeating-linear-gradient(to bottom, #4f46e5 0, #4f46e5 4px, transparent 4px, transparent 8px); position: relative; }
+    .flow-pill { background: #ffffff; border: 1px solid #cbd5e1; padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03); z-index: 2; }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: #059669; box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); animation: pulseAnimation 1.6s infinite; }
+
+    @keyframes pulseAnimation {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
     }
 
     .card-grid {
@@ -255,6 +376,7 @@
       .container { grid-template-columns: 1fr; }
       .sidebar { display: none; }
       .content { padding: 24px; }
+      .arch-grid-3, .arch-grid-2 { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -304,61 +426,374 @@
       <h1>⚡ Process Sharding & Data Partitioning</h1>
       <p>Veloctra implements a <strong>5-layer sharding and partitioning architecture</strong> designed to guarantee non-blocking high throughput, sub-second backpressure, and zero data loss.</p>
 
-      <div class="mermaid-box">
-        <pre class="mermaid">
-graph TD
-    subgraph 1. Source Extraction Sharding
-        S1["Source: SQL / NoSQL / S3 / CSV / Zip"]
-        C1["Cursor & Range Partitioner<br/>(Batch Cursors / Key Ranges / Watermarks)"]
-        S1 --> C1
-    end
+      <!-- SELLABLE 5-LAYER SHARDING CANVAS -->
+      <div class="arch-canvas">
+        
+        <!-- LAYER 1 -->
+        <div class="sharding-layer layer-1">
+          <div class="layer-header">
+            <div class="layer-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><rect width="20" height="18" x="2" y="3" rx="2"/></svg>
+              <span>Layer 1: Source Extraction Sharding</span>
+            </div>
+            <span class="layer-badge badge-indigo">Cursor Slicing • Key Ranges • Watermarks</span>
+          </div>
+          <div class="arch-grid-2">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-indigo">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Relational SQL Sources</div>
+                  <div class="card-sub">Postgres • MySQL • SQLite</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Server-side streaming cursors without table locks</li>
+                <li>Incremental indexed watermark partitioning (<code>id &gt;= :start AND id &lt; :end</code>)</li>
+              </ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-indigo">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">NoSQL & Object Stores</div>
+                  <div class="card-sub">MongoDB • S3 • CSV / Zip</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Token-aware range slices & uncompressed stream decompression</li>
+                <li>Zero-copy batch slice ingestion</li>
+              </ul>
+            </div>
+          </div>
+        </div>
 
-    subgraph 2. In-Flight Chunk Sharding & MemoryGuard
-        C1 --> MB["PyArrow RecordBatches"]
-        MG["MemoryGuard (75% Ceiling)<br/>• Evaluates Avg Row Size<br/>• Auto-shards chunks: 10k → 50 → 1 row<br/>• CPU/RAM Backpressure & GC"]
-        MB <--> MG
-    end
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill"><span class="pulse-dot"></span><span>Streaming Batches &gt;&gt; In-Flight PyArrow Buffers</span></div>
+        </div>
 
-    subgraph 3. Pipeline Concurrency & Process Sharding
-        P1["Pipeline Worker 1 (Job ID: job_1)"]
-        P2["Pipeline Worker 2 (Job ID: job_2)"]
-        PN["Pipeline Worker N (Job ID: job_N)"]
-        MG --> P1
-        MG --> P2
-        MG --> PN
-    end
+        <!-- LAYER 2 -->
+        <div class="sharding-layer layer-2">
+          <div class="layer-header">
+            <div class="layer-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+              <span>Layer 2: In-Flight Chunk Sharding & MemoryGuard</span>
+            </div>
+            <span class="layer-badge badge-cyan">Adaptive Chunking (10k → 50 → 1) • 75% RAM Ceiling</span>
+          </div>
+          <div class="arch-grid-2">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-cyan">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M4 4h6v6H4z"/><path d="M14 14h6v6h-6z"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">PyArrow RecordBatches</div>
+                  <div class="card-sub">SIMD Vector Engine</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>High-efficiency zero-copy columnar buffers</li>
+                <li>Continuous evaluation of average byte-size per row</li>
+              </ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-cyan">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">MemoryGuard Governor</div>
+                  <div class="card-sub">Resource Monitoring</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Massive blobs (&ge;5MB) auto-throttled to 1 row/chunk</li>
+                <li>&gt;75% RAM triggers micro-sleep backpressure & GC window</li>
+              </ul>
+            </div>
+          </div>
+        </div>
 
-    subgraph 4. Fault-Tolerance Sub-Chunk Sharding
-        FSM["Vectorised Batch Processing"]
-        DLQ["Corrupt Row Sharded to DLQ<br/>(Row-by-Row Isolation)"]
-        OK["Valid Sub-Batches Continue"]
-        P1 --> FSM
-        FSM -- "Poison Pill Record" --> DLQ
-        FSM -- "Valid Records" --> OK
-    end
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill"><span class="pulse-dot"></span><span>Dispatch to Concurrency Workers</span></div>
+        </div>
 
-    subgraph 5. Destination Sink Partitioning
-        FP["FilePartitioner Sink"]
-        D1[("part_00001.parquet<br/>(Max 100k rows / 100MB)")]
-        D2[("part_00002.parquet")]
-        DB[("Postgres / Mongo Bulk Upsert")]
-        OK --> FP
-        OK --> DB
-        FP --> D1
-        FP --> D2
-    end
-        </pre>
+        <!-- LAYER 3 -->
+        <div class="sharding-layer layer-3">
+          <div class="layer-header">
+            <div class="layer-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>Layer 3: Pipeline Concurrency & Process Sharding</span>
+            </div>
+            <span class="layer-badge badge-purple">Async Workers • Multi-Job Concurrency</span>
+          </div>
+          <div class="arch-grid-3">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                </div>
+                <div class="card-meta"><div class="card-title">Worker 1 (Job A)</div><div class="card-sub">Async Stream Thread</div></div>
+              </div>
+              <ul class="card-features"><li>Isolated state & metrics</li></ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                </div>
+                <div class="card-meta"><div class="card-title">Worker 2 (Job B)</div><div class="card-sub">Async Stream Thread</div></div>
+              </div>
+              <ul class="card-features"><li>Non-blocking I/O loop</li></ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                </div>
+                <div class="card-meta"><div class="card-title">Worker N (Job N)</div><div class="card-sub">Async Stream Thread</div></div>
+              </div>
+              <ul class="card-features"><li>Tenant-level isolation</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill"><span class="pulse-dot"></span><span>Batch Execution &amp; Error Slicing</span></div>
+        </div>
+
+        <!-- LAYER 4 -->
+        <div class="sharding-layer layer-4">
+          <div class="layer-header">
+            <div class="layer-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+              <span>Layer 4: Fault-Tolerant Sub-Chunk DLQ Sharding</span>
+            </div>
+            <span class="layer-badge badge-amber">Row-by-Row Isolation • Zero Data Loss</span>
+          </div>
+          <div class="arch-grid-2">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-amber">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Valid Records Sub-Batch</div>
+                  <div class="card-sub">Immediate Forwarding</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>99.99% healthy rows proceed to sink without delay</li>
+                <li>Zero pipeline downtime on bad payload records</li>
+              </ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-amber">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Corrupted Poison Pill Record</div>
+                  <div class="card-sub">Isolated to DLQ Store</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Single row sliced into Dead Letter Queue with error stack trace</li>
+                <li>Full audit trail & replay capability in Studio UI</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill"><span class="pulse-dot"></span><span>Partitioned Storage Sinks</span></div>
+        </div>
+
+        <!-- LAYER 5 -->
+        <div class="sharding-layer layer-5">
+          <div class="layer-header">
+            <div class="layer-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+              <span>Layer 5: Destination Sink & File Partitioning</span>
+            </div>
+            <span class="layer-badge badge-emerald">FilePartitioner (100k Rows / 100MB) • Bulk Upserts</span>
+          </div>
+          <div class="arch-grid-2">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-emerald">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">FilePartitioner Sinks</div>
+                  <div class="card-sub">part_00001.parquet • Snappy / ZSTD</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Automatic rotation upon 100k rows or 100MB threshold</li>
+                <li>Direct streaming upload to AWS S3 & Google Cloud Storage</li>
+              </ul>
+            </div>
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-emerald">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><rect width="20" height="18" x="2" y="3" rx="2"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Database Bulk Engines</div>
+                  <div class="card-sub">PostgreSQL • MongoDB Bulk Write</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>High-performance binary copy streaming</li>
+                <li>Unordered bulk write operations with connection pooling</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <h2>1. Source-Level Cursor & Range Sharding</h2>
-      <p>When reading large relational tables or file buckets, Veloctra streams records via server-side cursors and watermark range queries without loading full tables into memory:</p>
-      <pre><code>-- Incremental cursor range partitioning
-SELECT * FROM raw_claim_benef 
-WHERE id &gt;= :start_id AND id &lt; :end_id 
-ORDER BY id ASC;</code></pre>
+      <h2>1. Mathematical Guarantees: Gapless & Overlap-Free Process Sharding</h2>
+      <p>A critical challenge in distributed ETL and streaming engines is ensuring that concurrent shards process all data <strong>without duplicates</strong> and <strong>without dropping records</strong>. Veloctra enforces strict mathematical partitioning invariants across all extractors and workers:</p>
 
-      <h2>2. Adaptive In-Flight Memory Sharding (MemoryGuard)</h2>
-      <p>The <code>MemoryGuard</code> continuously monitors process RAM, OS CPU, and individual record sizes:</p>
+      <div class="card-grid" style="margin-bottom: 24px;">
+        <div class="card" style="border-top: 3px solid #4f46e5;">
+          <h3 style="color: #4338ca; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Zero-Overlap Invariant
+          </h3>
+          <p>Each shard $i$ is assigned a <strong>half-open interval</strong> $[Start_i, End_i)$ defined by the strict predicate:</p>
+          <pre style="margin: 8px 0; padding: 12px; font-size: 13px;"><code>WHERE id &gt;= :start_id AND id &lt; :end_id</code></pre>
+          <p style="font-size: 13.5px; color: #475569;">Since $End_i = Start_{i+1}$, any boundary key $k = End_i$ is excluded from Shard $i$ and evaluated exclusively in Shard $i+1$, mathematically preventing duplicate processing.</p>
+        </div>
+
+        <div class="card" style="border-top: 3px solid #059669;">
+          <h3 style="color: #047857; display: flex; align-items: center; gap: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Zero-Drop Completeness
+          </h3>
+          <p>The total keyspace domain $\mathcal{D} = [\text{MinID}, \text{MaxID}]$ is divided such that:</p>
+          <pre style="margin: 8px 0; padding: 12px; font-size: 13px;"><code>\bigcup_{i=1}^{N} [Start_i, End_i) \equiv [\text{MinID}, \text{MaxID}]</code></pre>
+          <p style="font-size: 13.5px; color: #475569;">Because the intervals are contiguous with zero internal gaps, every record in the table belongs to exactly one shard interval.</p>
+        </div>
+      </div>
+
+      <h2>2. Delta Processing & High-Watermark CDC Synchronization</h2>
+      <p>Veloctra includes native <strong>Delta Processing</strong> to capture only new or modified rows since the last successful sync, avoiding wasteful full-table re-scans:</p>
+
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+        <h3 style="margin-top: 0; font-size: 17px; color: #0f172a;">Delta Execution Lifecycle</h3>
+        <ol style="margin-left: 20px; font-size: 14.5px; color: #334155; line-height: 1.8;">
+          <li><strong>Watermark Discovery:</strong> When a pipeline starts, <code>PipelineOrchestrator</code> queries the <code>StateStore</code> for the latest committed <code>watermark_value</code> from previous runs of the same <code>pipeline_id</code>.</li>
+          <li><strong>Dynamic Query Rewriting:</strong> The extractor dynamically binds the watermark predicate to the SQL or NoSQL query:
+            <pre style="margin: 10px 0; padding: 12px; font-size: 13px;"><code>-- Automatically injected by Veloctra SQLConnector
+SELECT * FROM claims 
+WHERE updated_at &gt; '2026-01-03T10:00:00' 
+ORDER BY updated_at ASC;</code></pre>
+          </li>
+          <li><strong>Vectorised In-Flight High-Watermark Computation:</strong> As PyArrow columnar batches pass through the pipeline, the orchestrator tracks the maximum value in the watermark column: $\text{HighWatermark} = \max(\text{batch}[\text{watermark\_col}])$.</li>
+          <li><strong>Atomic Checkpoint Commit:</strong> The state store saves the new high-watermark alongside the chunk index, guaranteeing deterministic resumption upon any worker restart.</li>
+        </ol>
+      </div>
+
+      <h3>Sample Pipeline Configuration with Delta Processing</h3>
+      <pre><code>pipeline_id: pg_to_mongo_delta_claims
+tenant_id: healthcare_enterprise
+
+sources:
+  - name: pg_claims_source
+    type: database
+    connection_string: "postgresql+asyncpg://user:secret@localhost:5432/claims_db"
+    query: "SELECT id, beneficiary_id, amount, updated_at FROM raw_claims"
+    chunk_size: 5000
+    delta:
+      enabled: true
+      watermark_column: "updated_at"    # Supports timestamps, integer sequences, or offsets
+      watermark_type: "timestamp"      # timestamp | integer | string
+      initial_watermark: "1970-01-01T00:00:00Z"
+
+destinations:
+  - name: mongo_claims_sink
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: analytics_dw
+    collection: claims
+    upsert_key: "id"                   # Guarantees idempotent update-in-place for modified rows</code></pre>
+
+      <!-- ZERO-COLUMN CDC ENGINE & CHECKSUM DIFF -->
+      <h2>3. Zero-Column Change Data Capture (CDC): Tables Without Timestamps</h2>
+      <p>In legacy or third-party databases, tables frequently lack <code>updated_at</code> timestamps or auto-increment IDs, yet experience <strong>in-place updates and deletions</strong>. Veloctra solves this with the <strong>Universal Checksum-Diff CDC Engine</strong>:</p>
+
+      <div class="card-grid" style="margin-bottom: 24px;">
+        <div class="card">
+          <h3 style="color: #4f46e5;">Deterministic Row Checksums</h3>
+          <p>The engine computes SHA-256 cryptographic hashes over non-key payload cells: $\mathcal{H}(r) = \text{SHA256}(\text{JSON}(r_{\text{non-keys}}))$.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #0284c7;">In-Place Update & Delete Detection</h3>
+          <p>Diffing against state snapshots detects:</p>
+          <ul style="font-size: 13px; color: #475569; margin-top: 6px; padding-left: 16px;">
+            <li><strong>INSERT:</strong> Key not in previous state</li>
+            <li><strong>UPDATE:</strong> Key exists with modified checksum</li>
+            <li><strong>DELETE:</strong> Key in state but absent in table</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3 style="color: #059669;">Replication Oplog Streaming</h3>
+          <p>For MongoDB, PostgreSQL, and MySQL, native Change Streams subscribe to oplog/WAL logs with resume tokens.</p>
+        </div>
+      </div>
+
+      <h2>4. Idempotent Merge Strategies (Exactly-Once Semantics)</h2>
+      <p>Even in the event of unexpected network disconnects or process restarts, Veloctra destinations guarantee exactly-once data consistency via deterministic upsert engines:</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Target Engine</th>
+              <th>Merge Strategy</th>
+              <th>Behavior Under Replay</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>PostgreSQL</strong></td>
+              <td><code>INSERT INTO ... ON CONFLICT (keys) DO UPDATE SET ...</code></td>
+              <td>Updated records overwrite old rows; duplicate insertions are cleanly merged.</td>
+            </tr>
+            <tr>
+              <td><strong>MongoDB</strong></td>
+              <td><code>ReplaceOne(filter={"upsert_key": val}, replacement, upsert=True)</code></td>
+              <td>Document matching key is updated in place atomically; new keys are inserted.</td>
+            </tr>
+            <tr>
+              <td><strong>SQLite</strong></td>
+              <td><code>INSERT OR REPLACE INTO table (cols) VALUES (...)</code></td>
+              <td>Existing primary key row replaced atomically; zero duplicate accumulation.</td>
+            </tr>
+            <tr>
+              <td><strong>Parquet / S3</strong></td>
+              <td>Deterministic Partitions: <code>part_{job_id}_{chunk_idx}.parquet</code></td>
+              <td>Checkpointed chunk files overwritten atomically on retry; no file duplication.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>4. Adaptive In-Flight Memory Sharding (MemoryGuard)</h2>
+      <p>The <code>MemoryGuard</code> continuously monitors process RAM, OS CPU, and individual record sizes to ensure system stability:</p>
       <div class="card-grid">
         <div class="card">
           <h3>Massive Records (&ge; 5 MB/row)</h3>
@@ -374,36 +809,9 @@ ORDER BY id ASC;</code></pre>
         </div>
       </div>
 
-      <h2>3. Horizontal Process & Job Sharding</h2>
-      <p>Pipelines execute as decoupled asynchronous worker tasks identified by unique <code>job_id</code> strings (e.g. <code>csv_to_postgres_4</code>). Multiple jobs execute simultaneously across available CPU cores, completely isolated by tenant ID.</p>
-
-      <h2>4. Fault-Isolation Sub-Chunking (DLQ Routing)</h2>
-      <p>If a vectorised PyArrow batch of 10,000 rows encounters corrupt data, the orchestrator sub-shards the batch row-by-row (<code>batch.slice(i, 1)</code>). The poison-pill record is routed to the MongoDB Dead Letter Queue (<code>dlq</code>) with full stack trace, while all valid rows proceed immediately.</p>
-
-      <h2>5. Destination File Sink Partitioning (FilePartitioner)</h2>
-      <p>High-throughput data exports are partitioned into numbered files (<code>part_00001.parquet</code>, <code>part_00002.parquet</code>) whenever:</p>
-      <ul>
-        <li>Row count reaches <code>max_rows_per_file</code> (default: 100,000 rows).</li>
-        <li>Memory volume reaches <code>max_file_size_mb</code> (default: 100 MB).</li>
-      </ul>
+      <h2>5. Fault-Isolation Sub-Chunking (DLQ Routing)</h2>
+      <p>If a vectorised PyArrow batch of 10,000 rows encounters corrupt data, the orchestrator sub-shards the batch row-by-row (<code>batch.slice(i, 1)</code>). The poison-pill record is routed to the MongoDB/SQLite Dead Letter Queue (<code>dlq</code>) with full stack trace, while all valid rows proceed immediately.</p>
     </main>
   </div>
-
-  <script>
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      themeVariables: {
-        darkMode: false,
-        background: '#ffffff',
-        primaryColor: '#eef2ff',
-        primaryTextColor: '#0f172a',
-        primaryBorderColor: '#4f46e5',
-        lineColor: '#0284c7',
-        secondaryColor: '#f8fafc',
-        tertiaryColor: '#f1f5f9'
-      }
-    });
-  </script>
 </body>
 </html>

@@ -170,9 +170,19 @@ class PipelineFSM:
         return to_state
 
     async def get_state(self, job_id: str) -> PipelineState:
-        if job_id not in self._jobs:
-            raise JobNotFoundError(f"Job '{job_id}' not found.")
-        return self._jobs[job_id]
+        if job_id in self._jobs:
+            return self._jobs[job_id]
+        if self._store:
+            events = await self._store.get_audit_events(job_id, limit=1)
+            if events and len(events) > 0:
+                to_state_str = events[0].get("to_state")
+                try:
+                    state = PipelineState(to_state_str)
+                    self._jobs[job_id] = state
+                    return state
+                except ValueError:
+                    pass
+        raise JobNotFoundError(f"Job '{job_id}' not found.")
 
     async def is_terminal(self, job_id: str) -> bool:
         state = await self.get_state(job_id)

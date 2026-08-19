@@ -53,17 +53,31 @@ export interface DLQRecord {
   ts: number;
 }
 
+export interface PipelineErrorInfo {
+  message?: string;
+  traceback?: string;
+  error_type?: string;
+  failed_at_state?: string;
+}
+
 export interface JobInfo {
   id: string;
   state: FSMState;
+  pipeline_id?: string;
+  created_at?: number;
+  updated_at?: number;
+  duration_sec?: number;
+  tenant_id?: string;
+  error?: PipelineErrorInfo;
 }
 
 export interface ConnectionItem {
   id: string;
   name: string;
-  type: 'sql' | 'api' | 'nosql' | 'storage';
+  type: 'sql' | 'api' | 'nosql' | 'storage' | string;
   subtype: string;
-  dsn_or_url: string;
+  dsn_or_url?: string;
+  url?: string;
   auth_type: string;
   pool_or_rate_limits: string;
   details_summary: string;

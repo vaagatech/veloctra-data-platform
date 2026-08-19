@@ -17,14 +17,13 @@ router = APIRouter(prefix="/rbac", tags=["RBAC & Security"])
 
 _USERS_DB = [
     {"id": "usr_01", "username": "admin", "role": "SuperAdmin", "group": "Global Platform Operations", "tenant_id": "* (Global Scope)", "status": "ACTIVE"},
-    {"id": "usr_02", "username": "data_engineer_alex", "role": "Developer", "group": "Finance Data Engineering", "tenant_id": "finance_prod_workspace", "status": "ACTIVE"},
-    {"id": "usr_03", "username": "ops_lead_sarah", "role": "Operator", "group": "Marketing Analytics Group", "tenant_id": "marketing_analytics_workspace", "status": "ACTIVE"},
+    {"id": "usr_02", "username": "healthcare_lead_elena", "role": "Developer", "group": "Healthcare Data Engineering", "tenant_id": "healthcare_prod_workspace", "status": "ACTIVE"},
+    {"id": "usr_03", "username": "ops_lead_sarah", "role": "Operator", "group": "Healthcare Operations Group", "tenant_id": "healthcare_prod_workspace", "status": "ACTIVE"},
     {"id": "usr_04", "username": "auditor_james", "role": "Viewer", "group": "Global Compliance & Audit", "tenant_id": "* (Global Scope)", "status": "ACTIVE"},
 ]
 
 _GROUPS_DB = [
-    {"id": "grp_finance", "name": "Finance Data Engineering", "default_role": "Developer", "default_workspace": "finance_prod_workspace", "members_count": 5},
-    {"id": "grp_marketing", "name": "Marketing Analytics Group", "default_role": "Operator", "default_workspace": "marketing_analytics_workspace", "members_count": 3},
+    {"id": "grp_healthcare", "name": "Healthcare Data Engineering", "default_role": "Developer", "default_workspace": "healthcare_prod_workspace", "members_count": 8},
     {"id": "grp_platform_ops", "name": "Global Platform Operations", "default_role": "SuperAdmin", "default_workspace": "* (Global Scope)", "members_count": 2},
     {"id": "grp_compliance", "name": "Global Compliance & Audit", "default_role": "Viewer", "default_workspace": "* (Global Scope)", "members_count": 4},
 ]

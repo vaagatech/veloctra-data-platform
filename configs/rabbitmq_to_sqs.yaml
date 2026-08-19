@@ -1,0 +1,20 @@
+pipeline_id: rabbitmq_to_aws_sqs_bridge
+tenant_id: logistics_cloud
+
+sources:
+  - name: rabbitmq_sensor_telemetry
+    type: rabbitmq
+    amqp_url: "amqp://guest:guest@localhost:5672/"
+    queue: "warehouse_sensors"
+    chunk_size: 1000
+
+transforms:
+  - type: drop_nulls
+    params:
+      column: "device_id"
+
+destinations:
+  - name: sqs_iot_forwarder
+    type: sqs
+    region_name: "us-east-1"
+    queue_url: "https://sqs.us-east-1.amazonaws.com/123456789012/IoT-Events-Queue"

@@ -1,5 +1,5 @@
 pipeline_id: postgres_to_mongo
-project_id: finance_prod_workspace
+project_id: healthcare_prod_workspace
 version: 1
 description: "Extracts claims from PostgreSQL, applies vectorised Arrow transformations and Decimal sanitization, and streams into MongoDB."
 

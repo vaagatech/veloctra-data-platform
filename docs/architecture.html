@@ -10,7 +10,6 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -252,20 +251,459 @@
 
     tr:last-child td { border-bottom: none; }
 
-    .mermaid-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
+    /* ==========================================================================
+       SELLABLE ENTERPRISE ARCHITECTURE CANVAS & DIAGRAM SYSTEM
+       ========================================================================== */
+    .arch-canvas {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 28px;
+      margin: 28px 0 36px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.04), 0 4px 8px -2px rgba(15, 23, 42, 0.02);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .arch-plane {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .arch-plane:last-child {
+      margin-bottom: 0;
+    }
+
+    .arch-plane:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+    }
+
+    /* Plane Themes */
+    .arch-plane.plane-client {
+      border-top: 3px solid #4f46e5;
+      background: linear-gradient(180deg, #fbfbfe 0%, #ffffff 100%);
+    }
+    .arch-plane.plane-control {
+      border-top: 3px solid #7c3aed;
+      background: linear-gradient(180deg, #fdfbfe 0%, #ffffff 100%);
+    }
+    .arch-plane.plane-data {
+      border-top: 3px solid #0284c7;
+      background: linear-gradient(180deg, #f7fcff 0%, #ffffff 100%);
+    }
+    .arch-plane.plane-storage {
+      border-top: 3px solid #059669;
+      background: linear-gradient(180deg, #f6fdf9 0%, #ffffff 100%);
+    }
+
+    .plane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .plane-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14.5px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      text-transform: uppercase;
+    }
+
+    .plane-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+    .badge-purple { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+    .badge-cyan   { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+    .badge-emerald{ background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .badge-amber  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+
+    .arch-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .arch-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+    }
+
+    .arch-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .arch-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .arch-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+      border-color: #cbd5e1;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .card-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .card-icon-box.icon-indigo  { background: #eef2ff; color: #4f46e5; }
+    .card-icon-box.icon-purple  { background: #f5f3ff; color: #7c3aed; }
+    .card-icon-box.icon-cyan    { background: #ecfeff; color: #0284c7; }
+    .card-icon-box.icon-emerald { background: #ecfdf5; color: #059669; }
+    .card-icon-box.icon-amber   { background: #fffbeb; color: #d97706; }
+
+    .card-meta {
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.3;
+      margin-bottom: 2px;
+    }
+
+    .card-sub {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    .card-features {
+      list-style: none;
+      margin: 8px 0;
+      padding: 0;
+    }
+
+    .card-features li {
+      font-size: 12px;
+      color: #334155;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      line-height: 1.4;
+    }
+
+    .card-features li::before {
+      content: "•";
+      color: #4f46e5;
+      font-weight: bold;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed #e2e8f0;
+    }
+
+    .card-tag {
+      font-size: 10px;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: #475569;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Directional Connector Flow Bar */
+    .flow-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 10px 0;
+      position: relative;
+    }
+
+    .flow-line {
+      height: 28px;
+      width: 2px;
+      background: repeating-linear-gradient(to bottom, #4f46e5 0, #4f46e5 4px, transparent 4px, transparent 8px);
+      position: relative;
+    }
+
+    .flow-pill {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 3px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      z-index: 2;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #059669;
+      box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7);
+      animation: pulseAnimation 1.6s infinite;
+    }
+
+    @keyframes pulseAnimation {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
+    }
+
+    /* Workflow Pipeline Steps System */
+    .workflow-timeline {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
+      position: relative;
+    }
+
+    .workflow-step-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px 14px;
+      position: relative;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+
+    .workflow-step-card:hover {
+      border-color: #4f46e5;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.08);
+    }
+
+    .step-number {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #4f46e5;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    .step-state {
+      font-size: 11px;
+      font-weight: 800;
+      font-family: var(--mono);
+      color: #4338ca;
+      letter-spacing: 0.02em;
+      margin-bottom: 4px;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 6px;
+    }
+
+    .step-desc {
+      font-size: 11.5px;
+      color: #64748b;
+      line-height: 1.35;
+    }
+
+    /* Recovery Branches */
+    .branch-box {
+      background: #fff8f8;
+      border: 1px solid #fecaca;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin: 16px 0;
+    }
+
+    .branch-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #991b1b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .branch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .branch-item {
+      background: #ffffff;
+      border: 1px solid #fee2e2;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+
+    .branch-item strong {
+      color: #b91c1c;
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+
+    /* Double Envelope Security Visualizer */
+    .crypto-visual {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
       padding: 24px;
       margin: 24px 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    }
+
+    .crypto-pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+    }
+
+    .crypto-node {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      transition: all 0.2s;
+    }
+
+    .crypto-node:hover {
+      border-color: #7c3aed;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.05);
+    }
+
+    .crypto-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .crypto-content {
+      flex: 1;
+    }
+
+    .crypto-step-tag {
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #7c3aed;
+      margin-bottom: 2px;
+    }
+
+    .crypto-heading {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 3px;
+    }
+
+    .crypto-sub {
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.35;
+    }
+
+    .crypto-code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .crypto-down-arrow {
       text-align: center;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+      color: #7c3aed;
+      font-size: 18px;
+      margin: -6px 0;
+      opacity: 0.7;
+    }
+
+    /* Fallback Mermaid styling */
+    pre.mermaid {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: #0f172a !important;
+      padding: 0 !important;
     }
 
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
       .sidebar { display: none; }
       .content { padding: 24px; }
+      .arch-grid-3, .arch-grid-2, .arch-grid-4 { grid-template-columns: 1fr; }
+      .workflow-timeline { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -313,36 +751,351 @@
 
     <main class="content">
       <h1>🏛️ System Architecture Blueprint</h1>
-      <p>The <strong>Veloctra Data Platform</strong> is engineered as a zero-memory-leak, high-throughput data streaming platform built on top of modular Python/FastAPI packages and React 18 frontend consoles.</p>
+      <p>The <strong>Veloctra Data Platform</strong> is engineered as an enterprise-grade, zero-memory-leak, high-throughput data streaming platform built on top of modular Python/FastAPI packages and React 18 frontend consoles.</p>
 
-      <div class="mermaid-box">
-        <pre class="mermaid">
-graph TD
-    subgraph Client & Management Layer
-        UI["🖥️ React 18 / Tailwind Management Console<br/>• Pipeline Studio (CRUD & 1-Click Publish)<br/>• Connection Manager (Encrypted Credentials)<br/>• Observability Center (Live Sparklines & Gauges)"]
-    end
+      <!-- SELLABLE INTERACTIVE SYSTEM ARCHITECTURE CANVAS -->
+      <div class="arch-canvas">
+        
+        <!-- PLANE 1: CLIENT & MANAGEMENT -->
+        <div class="arch-plane plane-client">
+          <div class="plane-header">
+            <div class="plane-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              <span>1. Client & Management Experience Layer</span>
+            </div>
+            <span class="plane-badge badge-indigo">React 18 • TypeScript • Tailwind</span>
+          </div>
 
-    subgraph Control Plane & Security
-        API["⚡ FastAPI Enterprise Gateway (veloctra-api)<br/>• JWT Multi-Tenant Auth & 5-Role RBAC<br/>• Double Envelope Encryption Service (Fernet + ChaCha20)"]
-        FSM["🔄 Finite State Machine (veloctra-state)<br/>• 11-State Deterministic Lifecycle<br/>• Dynamic MongoDB (veloctra_system) & SQLite Store"]
-    end
+          <div class="arch-grid-3">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-indigo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Visual Pipeline Studio</div>
+                  <div class="card-sub">apps/management-ui</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Visual DAG Builder with 1-Click Validation</li>
+                <li>Live YAML Editor with Schema Autocomplete</li>
+                <li>Interactive Connection Credential Vault</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Monaco Editor</span>
+                <span class="card-tag">Live Canvas</span>
+                <span class="card-tag">No-Code / Low-Code</span>
+              </div>
+            </div>
 
-    subgraph Data Plane & Execution Engine
-        ORCH["⚙️ Pipeline Orchestrator (veloctra-orchestrator)<br/>• Intelligent MemoryGuard (75% RAM/CPU Ceiling)<br/>• Dynamic Chunk Sizing (10k → 50 → 1 row on huge blobs)<br/>• Fault-Isolated DLQ Row-by-Row Fallback Router"]
-        TRANS["⚡ Vector Engine (veloctra-transformers)<br/>• PyArrow / Polars Columnar Transforms<br/>• Field-Level Column Encryption (AES-256-GCM)<br/>• Dynamic Rules & WeakRef Plugin Sandbox"]
-    end
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-indigo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Real-Time Observability Center</div>
+                  <div class="card-sub">WebSocket Live Feed</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Sub-second Throughput Sparklines & Gauges</li>
+                <li>Live MemoryGuard RAM / CPU Pressure Telemetry</li>
+                <li>Instant Row Counter & Execution Heartbeat</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">WebSockets</span>
+                <span class="card-tag">Dynamic Gauges</span>
+                <span class="card-tag">Alerting</span>
+              </div>
+            </div>
 
-    subgraph Connectors & Sinks
-        CONN["🔌 Universal Connectors (veloctra-connectors)<br/>• SQL: PostgreSQL (asyncpg), MySQL, SQLite<br/>• NoSQL: MongoDB, Cassandra, Redis, DynamoDB<br/>• Lakehouse: Parquet, CSV, S3, GCS, Local FilePartitioner"]
-    end
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-indigo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">CLI & Headless Orchestrator</div>
+                  <div class="card-sub">ctl.sh & Python SDK</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Single-command platform lifecycle control</li>
+                <li>CI/CD GitOps pipeline triggers & imports</li>
+                <li>Docker Compose container auto-bootstrap</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Bash CLI</span>
+                <span class="card-tag">REST Client</span>
+                <span class="card-tag">Docker Compose</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-    UI -->|REST & WebSockets| API
-    API --> FSM
-    API --> ORCH
-    ORCH --> FSM
-    ORCH --> TRANS
-    ORCH --> CONN
-        </pre>
+        <!-- CONNECTOR 1 -> 2 -->
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill">
+            <span class="pulse-dot"></span>
+            <span>REST API (FastAPI) & Bi-Directional WebSockets</span>
+          </div>
+        </div>
+
+        <!-- PLANE 2: CONTROL PLANE & SECURITY -->
+        <div class="arch-plane plane-control">
+          <div class="plane-header">
+            <div class="plane-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>2. Enterprise Control Plane & Security Engine</span>
+            </div>
+            <span class="plane-badge badge-purple">FastAPI • JWT RBAC • Double Envelope KMS</span>
+          </div>
+
+          <div class="arch-grid-3">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">API Gateway & Auth</div>
+                  <div class="card-sub">packages/veloctra-api</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>JWT Multi-Tenant Auth with 5-Role RBAC</li>
+                <li>Dynamic YAML Pipeline Compiler & Validator</li>
+                <li>High-Frequency WebSocket Broadcast Hub</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">FastAPI ASGI</span>
+                <span class="card-tag">Pydantic v2</span>
+                <span class="card-tag">Bearer Auth</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">11-State Deterministic FSM</div>
+                  <div class="card-sub">packages/veloctra-state</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Deterministic State Machine (CREATED → COMPLETED)</li>
+                <li>Atomic Checkpointing & Offset Tracking</li>
+                <li>MongoDB (<code>veloctra_system</code>) & SQLite Store</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Strict FSM</span>
+                <span class="card-tag">Atomic Resume</span>
+                <span class="card-tag">No Race Conditions</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Double Envelope KMS</div>
+                  <div class="card-sub">packages/veloctra-security</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Layer 1: Fernet (AES-128-CBC + HMAC-SHA256)</li>
+                <li>Layer 2: ChaCha20-Poly1305 AEAD + Tenant AAD</li>
+                <li>Zero-Downtime KeyRotationManager (v1 → v2)</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">AEAD Crypto</span>
+                <span class="card-tag">Keyring Versioning</span>
+                <span class="card-tag">Zero-Plaintext</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONNECTOR 2 -> 3 -->
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill">
+            <span class="pulse-dot"></span>
+            <span>Non-Blocking Stream Dispatch & In-Memory Shared Buffer</span>
+          </div>
+        </div>
+
+        <!-- PLANE 3: DATA EXECUTION & VECTOR ENGINE -->
+        <div class="arch-plane plane-data">
+          <div class="plane-header">
+            <div class="plane-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+              <span>3. Vectorized Data Plane & Execution Engine</span>
+            </div>
+            <span class="plane-badge badge-cyan">Apache Arrow • Polars • MemoryGuard (75% Cap)</span>
+          </div>
+
+          <div class="arch-grid-3">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-cyan">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Stream Orchestrator</div>
+                  <div class="card-sub">packages/veloctra-orchestrator</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Intelligent MemoryGuard (75% RAM / CPU Ceiling)</li>
+                <li>Dynamic Chunk Sizing: 10,000 → 50 → 1 row</li>
+                <li>Circuit Breaker with AWS Full Jitter Backoff</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Zero Memory Leak</span>
+                <span class="card-tag">Adaptive Backpressure</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-cyan">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M4 4h6v6H4z"/><path d="M14 14h6v6h-6z"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Vectorized Transform Engine</div>
+                  <div class="card-sub">packages/veloctra-transformers</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>PyArrow & Polars SIMD Columnar Transforms</li>
+                <li>Field-Level Column Cipher (AES-256-GCM)</li>
+                <li>WeakRef Plugin Registry & Sanitized Sandboxing</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">120,000+ rows/sec</span>
+                <span class="card-tag">Zero-Copy Memory</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-cyan">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Fault-Isolated DLQ Router</div>
+                  <div class="card-sub">Dead Letter Queue Engine</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Row-by-Row Fallback on Poison Pill batches</li>
+                <li>Corrupt records quarantined to DLQ sink</li>
+                <li>Non-blocking pipeline execution guarantee</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Zero Data Loss</span>
+                <span class="card-tag">Audit Trail</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONNECTOR 3 -> 4 -->
+        <div class="flow-connector">
+          <div class="flow-line"></div>
+          <div class="flow-pill">
+            <span class="pulse-dot"></span>
+            <span>Parallelized Bulk Sinks (asyncpg Copy / Bulk Write / Parquet S3)</span>
+          </div>
+        </div>
+
+        <!-- PLANE 4: CONNECTORS & STORAGE SINK -->
+        <div class="arch-plane plane-storage">
+          <div class="plane-header">
+            <div class="plane-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+              <span>4. Universal Connectors & Storage Lakehouse Plane</span>
+            </div>
+            <span class="plane-badge badge-emerald">SQL • NoSQL • Parquet • S3 / GCS</span>
+          </div>
+
+          <div class="arch-grid-3">
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><rect width="20" height="18" x="2" y="3" rx="2"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Relational SQL Drivers</div>
+                  <div class="card-sub">PostgreSQL • MySQL • SQLite</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>High-speed <code>asyncpg</code> binary copy streams</li>
+                <li>Auto-partitioning cursor pagination queries</li>
+                <li>Transactional WAL mode with zero table lock</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">PostgreSQL</span>
+                <span class="card-tag">MySQL</span>
+                <span class="card-tag">SQLite</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V18a1 1 0 0 1-2 0v-1.07A6 6 0 0 1 6.07 12H5a1 1 0 0 1 0-2h1.07A6 6 0 0 1 11 4.07V3a1 1 0 0 1 2 0v1.07A6 6 0 0 1 17.93 10H19a1 1 0 0 1 0 2h-1.07A6 6 0 0 1 13 16.93z"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">NoSQL & Document Stores</div>
+                  <div class="card-sub">MongoDB • Cassandra • Redis</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>MongoDB Bulk Write unordered batches</li>
+                <li>Cassandra token-aware partition ranges</li>
+                <li>Redis Streams low-latency queue buffers</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">MongoDB</span>
+                <span class="card-tag">Cassandra</span>
+                <span class="card-tag">Redis</span>
+              </div>
+            </div>
+
+            <div class="arch-card">
+              <div class="card-top">
+                <div class="card-icon-box icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                </div>
+                <div class="card-meta">
+                  <div class="card-title">Lakehouse & Object Stores</div>
+                  <div class="card-sub">Parquet • S3 • GCS • Partitioner</div>
+                </div>
+              </div>
+              <ul class="card-features">
+                <li>Snappy / Zstandard columnar Parquet writing</li>
+                <li>Auto-rotating <code>FilePartitioner</code> (Size / Row limits)</li>
+                <li>Direct streaming to AWS S3 & Google Cloud Storage</li>
+              </ul>
+              <div class="card-tags">
+                <span class="card-tag">Apache Parquet</span>
+                <span class="card-tag">AWS S3</span>
+                <span class="card-tag">GCS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <h2 id="packages">📦 Monorepo Package Directory</h2>
@@ -401,64 +1154,234 @@ graph TD
         </table>
       </div>
 
-      <h2>🔄 Deterministic 11-State Finite State Machine (FSM)</h2>
-      <p>Pipeline lifecycles are governed by a strictly validated state machine preventing race conditions or inconsistent progress:</p>
-      <div class="mermaid-box">
-        <pre class="mermaid">
-stateDiagram-v2
-    [*] --> CREATED
-    CREATED --> VALIDATING
-    VALIDATING --> EXTRACTING
-    EXTRACTING --> TRANSFORMING
-    TRANSFORMING --> LOADING
-    LOADING --> CHECKPOINTING
-    CHECKPOINTING --> TRANSFORMING: Next Batch
-    CHECKPOINTING --> COMPLETED: Final Batch
-    
-    EXTRACTING --> PAUSED: User Action
-    TRANSFORMING --> RETRYING: Network Glitch
-    TRANSFORMING --> DLQ_ROUTED: Poison Pill Record
-    LOADING --> DLQ_ROUTED: Insertion Error
-    DLQ_ROUTED --> CHECKPOINTING: Valid Rows Saved
-    
-    PAUSED --> EXTRACTING: Resume
-    RETRYING --> TRANSFORMING: Recovered
-    COMPLETED --> [*]
-        </pre>
+      <!-- SELLABLE END-TO-END PIPELINE WORKFLOW & FSM LIFECYCLE -->
+      <h2>🔄 Deterministic 11-State Finite State Machine (FSM) Workflow</h2>
+      <p>Pipeline lifecycles are governed by a strictly validated state machine preventing race conditions, resource starvation, and inconsistent progress:</p>
+
+      <div class="workflow-timeline">
+        <div class="workflow-step-card">
+          <div class="step-number">1</div>
+          <div class="step-state">CREATED</div>
+          <div class="step-title">Initialization</div>
+          <div class="step-desc">Pipeline definition registered, YAML configuration validated, and runtime job allocated.</div>
+        </div>
+
+        <div class="workflow-step-card">
+          <div class="step-number">2</div>
+          <div class="step-state">VALIDATING</div>
+          <div class="step-title">Connection Check</div>
+          <div class="step-desc">Credentials decrypted via KMS, source/sink handshakes verified, and schemas aligned.</div>
+        </div>
+
+        <div class="workflow-step-card">
+          <div class="step-number">3</div>
+          <div class="step-state">EXTRACTING</div>
+          <div class="step-title">Sharded Extraction</div>
+          <div class="step-desc">High-throughput cursor pagination and async connection pooling streaming batches.</div>
+        </div>
+
+        <div class="workflow-step-card">
+          <div class="step-number">4</div>
+          <div class="step-state">TRANSFORMING</div>
+          <div class="step-title">Vector Processing</div>
+          <div class="step-desc">PyArrow zero-copy column batching, field transforms, and AES-256 encryption.</div>
+        </div>
+
+        <div class="workflow-step-card">
+          <div class="step-number">5</div>
+          <div class="step-state">LOADING</div>
+          <div class="step-title">Resilient Load</div>
+          <div class="step-desc">Bulk load into target database or Parquet partitions with Circuit Breaker guards.</div>
+        </div>
+
+        <div class="workflow-step-card">
+          <div class="step-number">6</div>
+          <div class="step-state">CHECKPOINTING</div>
+          <div class="step-title">Atomic Commit</div>
+          <div class="step-desc">State persistence to MongoDB/SQLite. Increments offsets, loops or marks <code>COMPLETED</code>.</div>
+        </div>
       </div>
 
+      <!-- EXCEPTION & FAULT ISOLATION ROUTES -->
+      <div class="branch-box">
+        <div class="branch-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+          <span>Automated Self-Healing & Exception Recovery Routes</span>
+        </div>
+        <div class="branch-grid">
+          <div class="branch-item">
+            <strong>PAUSED (User Intervention):</strong> Operator pauses execution via UI; state engine preserves exact stream offsets without data loss. Resumes cleanly to <code>EXTRACTING</code>.
+          </div>
+          <div class="branch-item">
+            <strong>RETRYING (Network Glitch):</strong> Transient connection dropped; circuit breaker engages AWS Full Jitter backoff (100ms → 2s → 8s) and recovers to <code>TRANSFORMING</code>.
+          </div>
+          <div class="branch-item">
+            <strong>DLQ_ROUTED (Poison Pill Record):</strong> Corrupted row detected; orchestrator splits batch row-by-row, routing poison record to DLQ and saving all valid rows.
+          </div>
+        </div>
+      </div>
+
+      <!-- SELLABLE DOUBLE ENVELOPE AEAD CRYPTOGRAPHIC FLOW -->
       <h2>🔐 Double Envelope AEAD Encryption & Key Rotation</h2>
-      <p>To eliminate credential leakage from static configuration files, database connections and API tokens are double-encrypted before persisting in MongoDB:</p>
-      <pre><code>Plaintext Credential / Secret
-             │
-             ▼
-[ Layer 1: Fernet (AES-128-CBC + HMAC-SHA256) with Master Key ]
-             │
-             ▼
-[ Layer 2: ChaCha20-Poly1305 AEAD with Secondary Key + Tenant AAD ]
-             │
-             ▼
-Stored Format: enc:v1:&lt;nonce_b64&gt;:&lt;ciphertext_b64&gt;</code></pre>
+      <p>To eliminate credential leakage from static configuration files, database connections and API tokens are double-encrypted with zero-plaintext exposure:</p>
+
+      <div class="crypto-visual">
+        <div class="crypto-pipeline">
+          
+          <div class="crypto-node">
+            <div class="crypto-icon icon-indigo">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Step 1 • Plaintext Ingestion</div>
+              <div class="crypto-heading">Raw Database Credentials / API Secrets</div>
+              <div class="crypto-sub">Input JSON secrets received via HTTPS from authenticated Studio UI or encrypted CI/CD pipeline payload.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-purple">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Step 2 • Layer 1 Encryption</div>
+              <div class="crypto-heading">Fernet Cipher Envelope (Master Key)</div>
+              <div class="crypto-sub">AES-128-CBC payload encryption combined with HMAC-SHA256 authenticated integrity signature using the platform Root Master Key.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-cyan">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Step 3 • Layer 2 AEAD Encryption</div>
+              <div class="crypto-heading">ChaCha20-Poly1305 AEAD + Tenant AAD</div>
+              <div class="crypto-sub">Second-layer authenticated cryptographic envelope binding the payload to unique Tenant ID context headers (AAD) to prevent cross-tenant token replay attacks.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-emerald">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Step 4 • Safe Persistence</div>
+              <div class="crypto-heading">Versioned Ciphertext Persisted to Database</div>
+              <div class="crypto-sub">Stored in format: <span class="crypto-code">enc:v1:&lt;nonce_b64&gt;:&lt;ciphertext_b64&gt;</span>. Zero plaintext ever touches disk or logs.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
       <p><strong>Zero-Downtime Key Rotation:</strong> The <code>KeyRotationManager</code> maintains versioned keyrings. When keys are rotated to <code>v2</code>, existing tokens under <code>v1</code> remain decryptable, while all new or updated credentials are encrypted under <code>v2</code> seamlessly.</p>
+
+      <!-- FIELD-LEVEL COLUMN ENCRYPTION -->
+      <h2>🛡️ In-Memory Field-Level Column Encryption (AES-256-GCM)</h2>
+      <p>For sensitive PII, PHI, and financial attributes, Veloctra provides in-memory vector column encryption before writing batches to disk or cloud destinations:</p>
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="color: #4f46e5;">Vector Column Ciphers</h3>
+          <p>Operates directly on PyArrow chunks using SIMD instructions, encrypting column records without decompressing surrounding dataset rows.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #0284c7;">AES-256-GCM Authenticated Cipher</h3>
+          <p>Generates fresh 96-bit cryptographic nonces per cell, appending 128-bit authentication tags to prevent data tampering.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #059669;">Declarative YAML Policies</h3>
+          <p>Easily define encrypted fields via configuration: <code>fields_to_encrypt: ["ssn", "claim_amount", "card_number"]</code>.</p>
+        </div>
+      </div>
+
+      <!-- 5-ROLE RBAC AUTHORIZATION MODEL -->
+      <h2>👥 5-Role Multi-Tenant Access Control (RBAC)</h2>
+      <p>Control plane endpoints enforce tenant-bound Role-Based Access Control to ensure strict isolation:</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Allowed Operations</th>
+              <th>Authorization Scope</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>SUPER_ADMIN</code></td>
+              <td>Full administrative control, global key rotation, server telemetry, tenant provisioning.</td>
+              <td>Platform-wide</td>
+            </tr>
+            <tr>
+              <td><code>TENANT_ADMIN</code></td>
+              <td>Create pipelines, manage tenant secrets, invite users, configure alert webhooks.</td>
+              <td>Tenant-isolated</td>
+            </tr>
+            <tr>
+              <td><code>DATA_ENGINEER</code></td>
+              <td>Author and test pipelines, configure transforms, manage schemas, inspect DLQ.</td>
+              <td>Tenant-isolated</td>
+            </tr>
+            <tr>
+              <td><code>OPERATOR</code></td>
+              <td>Trigger pipeline runs, pause/resume execution, view live progress and logs.</td>
+              <td>Tenant-isolated</td>
+            </tr>
+            <tr>
+              <td><code>AUDITOR</code></td>
+              <td>Read-only inspection of audit events, FSM transitions, and compliance checkpoints.</td>
+              <td>Tenant-isolated</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ANY-TO-ANY STREAMING & MESSAGING INTEGRATION -->
+      <h2>⚡ Universal Pluggable Streaming & Messaging Architecture</h2>
+      <p>Veloctra is built around an open, extensible plugin model: streaming services are <strong>never hardcoded or limited</strong> to specific vendors. Through <code>BaseStreamingConnector</code> and the dynamic <code>StreamingConnectorRegistry</code>, users can plug in any streaming broker (Kafka, RabbitMQ, AWS SQS, Redis Streams, NATS, GCP Pub/Sub, Azure Event Hubs, MQTT, or custom internal queue systems):</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="color: #4f46e5;">Open Plugin Contract</h3>
+          <p>Implement 4 simple async methods (<code>connect</code>, <code>close</code>, <code>stream_read</code>, <code>publish_batch</code>) to integrate any message broker without modifying platform core code.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #0284c7;">Dynamic Discovery & Loading</h3>
+          <p>Reference custom connectors in pipeline YAML via <code>plugin_file: "plugins/custom_nats.py"</code> or <code>plugin_module: "my_org.solace"</code> with runtime hot-loading.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #059669;">Ultra-Lightweight Footprint (&lt; 40MB RAM)</h3>
+          <p>Core platform has <strong>zero heavy broker dependencies</strong>. Client libraries (e.g. <code>aiokafka</code>, <code>redis</code>, <code>aiobotocore</code>) load lazily on-demand, allowing Veloctra to run in lightweight micro-containers and edge pods.</p>
+        </div>
+      </div>
+
+      <!-- CUSTOM SCRIPT TRANSFORMATION ENGINE -->
+      <h2>🐍 Custom Script Transformation Engine (UI & CI/CD Import)</h2>
+      <p>For complex business logic, risk modeling, and advanced feature engineering beyond standard schema mapping, users can execute custom Python scripts:</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="color: #4f46e5;">Inline UI Scripting</h3>
+          <p>Define custom Python code directly in the pipeline designer with live dry-run validation via the <code>/scripts/validate</code> REST API.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #0284c7;">CI/CD Module Import</h3>
+          <p>Import external scripts, shared organizational packages, and Git repository modules seamlessly via <code>script_path</code> or <code>module_name</code>.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: #059669;">Multi-Framework Adapters</h3>
+          <p>Author logic with your choice of framework: <code>def transform(batch: pa.RecordBatch)</code>, <code>def transform_df(df: pd.DataFrame)</code>, or <code>def transform_polars(df: pl.DataFrame)</code>.</p>
+        </div>
+      </div>
     </main>
   </div>
-
-  <script>
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      themeVariables: {
-        darkMode: false,
-        background: '#ffffff',
-        primaryColor: '#eef2ff',
-        primaryTextColor: '#0f172a',
-        primaryBorderColor: '#4f46e5',
-        lineColor: '#0284c7',
-        secondaryColor: '#f8fafc',
-        tertiaryColor: '#f1f5f9'
-      }
-    });
-  </script>
 </body>
 </html>

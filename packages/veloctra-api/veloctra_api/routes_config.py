@@ -80,36 +80,49 @@ async def save_config(
         # Auto-register discovered connections into Connection Manager (MongoDB)
         try:
             store = StateStore()
+            def _extract_url(item: dict) -> str:
+                return (
+                    item.get("connection_string")
+                    or item.get("url")
+                    or item.get("endpoint_url")
+                    or item.get("path")
+                    or item.get("output_dir")
+                    or item.get("redis_url")
+                    or item.get("queue_url")
+                    or (f"kafka://{item.get('bootstrap_servers')}" if item.get("bootstrap_servers") else None)
+                    or (f"rabbitmq://{item.get('host')}:{item.get('port', 5672)}" if item.get("host") else None)
+                    or (f"nats://{item.get('servers')[0]}" if item.get("servers") and isinstance(item.get("servers"), list) else None)
+                    or f"{item.get('type', 'generic')}://configured"
+                )
+
             sources = parsed.get("sources") or ([parsed["source"]] if "source" in parsed else [])
             for s in sources:
-                stype = s.get("type", "").lower()
-                c_str = s.get("connection_string") or s.get("url") or s.get("endpoint_url")
+                stype = s.get("type", "file").lower()
+                c_str = _extract_url(s)
                 s_name = s.get("name") or f"{pipeline_id}_{stype}_source"
-                if c_str:
-                    await store.save_connection(
-                        tenant_id=token.tenant_id,
-                        conn_id=s_name.lower().replace(" ", "_").replace("-", "_"),
-                        name=s_name,
-                        type=stype,
-                        url=c_str,
-                        config_payload=s,
-                    )
+                await store.save_connection(
+                    tenant_id=token.tenant_id,
+                    conn_id=s_name.lower().replace(" ", "_").replace("-", "_"),
+                    name=s_name,
+                    type=stype,
+                    url=c_str,
+                    config_payload=s,
+                )
 
             destinations = parsed.get("destinations") or []
             for d in destinations:
-                dtype = d.get("type", "").lower()
+                dtype = d.get("type", "database").lower()
                 db_type = d.get("db_type", dtype).lower()
-                c_str = d.get("connection_string") or d.get("url") or d.get("output_dir")
+                c_str = _extract_url(d)
                 d_name = d.get("name") or f"{pipeline_id}_{db_type}_dest"
-                if c_str:
-                    await store.save_connection(
-                        tenant_id=token.tenant_id,
-                        conn_id=d_name.lower().replace(" ", "_").replace("-", "_"),
-                        name=d_name,
-                        type=db_type,
-                        url=c_str,
-                        config_payload=d,
-                    )
+                await store.save_connection(
+                    tenant_id=token.tenant_id,
+                    conn_id=d_name.lower().replace(" ", "_").replace("-", "_"),
+                    name=d_name,
+                    type=db_type,
+                    url=c_str,
+                    config_payload=d,
+                )
         except Exception as conn_err:
             logger.warning("[ConfigManager] Connection auto-sync warning: %s", conn_err)
 
@@ -158,24 +171,32 @@ async def publish_config(
 
 @router.get("/list")
 async def list_pipelines(
+    tenant_id: Optional[str] = None,
     token: TokenPayload = Depends(require_permission(Permission.CONFIG_READ)),
 ):
-    pipelines = await _config_mgr.list_projects(token.tenant_id)
+    target_tenant = tenant_id or token.tenant_id
+    if token.role != Role.SUPER_ADMIN.value and target_tenant != token.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied for tenant")
+    pipelines = await _config_mgr.list_projects(target_tenant)
     return {"pipelines": pipelines}
 
 
 @router.get("/{pipeline_id}")
 async def get_config(
     pipeline_id: str,
+    tenant_id: Optional[str] = None,
     raw: bool = False,
     token: TokenPayload = Depends(require_permission(Permission.CONFIG_READ)),
 ):
+    target_tenant = tenant_id or token.tenant_id
+    if token.role != Role.SUPER_ADMIN.value and target_tenant != token.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied for tenant")
     try:
         if raw:
             if not (token.role in (Role.SUPER_ADMIN.value, Role.PROJECT_ADMIN.value)):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Raw secrets view requires ProjectAdmin or SuperAdmin role")
-            return await _config_mgr.load_raw(token.tenant_id, pipeline_id)
-        return await _config_mgr.load_sanitized(token.tenant_id, pipeline_id)
+            return await _config_mgr.load_raw(target_tenant, pipeline_id)
+        return await _config_mgr.load_sanitized(target_tenant, pipeline_id)
     except ConfigNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
@@ -318,13 +339,16 @@ class ConnectionCreateRequest(BaseModel):
 
 @router.get("/connections/list")
 async def list_connections(
+    tenant_id: Optional[str] = None,
     token: TokenPayload = Depends(require_permission(Permission.CONFIG_READ)),
 ):
     """List all configured source systems and destination targets available for selection."""
+    target_tenant = tenant_id or token.tenant_id
+    if token.role != Role.SUPER_ADMIN.value and target_tenant != token.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied for tenant")
     store = StateStore()
-    conns = await store.get_connections(token.tenant_id)
-    # The UI currently expects 'dsn' field, so we map url to dsn for backward compatibility if needed, but wait:
-    # let's just map it out
+    conns = await store.get_connections(target_tenant)
+    # The UI currently expects 'dsn' field, so we map url to dsn for backward compatibility
     mapped = []
     for c in conns:
         c["dsn"] = c.get("url", "")

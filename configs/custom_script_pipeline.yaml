@@ -1,0 +1,32 @@
+pipeline_id: patient_risk_scoring_pipeline
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
+
+sources:
+  - name: claims_db_source
+    type: database
+    connection_string: "sqlite:///./claims.db"
+    query: "SELECT claim_id, patient_id, billed_amount, diagnosis_code, days_admitted FROM inpatient_claims"
+    chunk_size: 5000
+
+# Custom Script Transformation: Supports Inline Code (UI) or CI/CD module path
+custom_script:
+  timeout_seconds: 30.0
+  code: |
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    def transform(batch: pa.RecordBatch) -> pa.RecordBatch:
+        df = batch.to_pandas()
+        # Complex multi-step processing / feature engineering
+        df["risk_multiplier"] = df["days_admitted"].apply(lambda d: 1.8 if d > 7 else 1.1)
+        df["adjusted_cost"] = df["billed_amount"] * df["risk_multiplier"]
+        df["is_high_risk"] = df["adjusted_cost"] > 10000.0
+        return pa.RecordBatch.from_pandas(df)
+
+destinations:
+  - name: analytics_warehouse_sink
+    type: database
+    connection_string: "sqlite:///./analytics.db"
+    table: "scored_patient_claims"
+    match_keys: ["claim_id"]
