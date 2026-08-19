@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture Blueprint — Veloctra Data Platform</title>
+  <meta name="description" content="Architecture blueprint, monorepo packages, FSM state engine, and double envelope encryption for Veloctra Data Platform." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #090a10;
+      --surface: #10131f;
+      --surface2: #181c2d;
+      --surface3: #22273e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.3);
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --accent2: #8b5cf6;
+      --cyan: #06b6d4;
+      --emerald: #10b981;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(99, 102, 241, 0.12), transparent 70%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(6, 182, 212, 0.08), transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 68px;
+      background: rgba(16, 19, 31, 0.88);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 36px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 25px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover, .nav-links a.active { color: var(--text); }
+
+    .github-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text) !important;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: calc(100vh - 68px);
+      position: relative;
+      z-index: 1;
+    }
+
+    .sidebar {
+      padding: 32px 20px;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 68px;
+      height: calc(100vh - 68px);
+      overflow-y: auto;
+    }
+
+    .menu-group { margin-bottom: 28px; }
+    .menu-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      margin-bottom: 12px;
+      padding-left: 12px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      margin-bottom: 3px;
+      transition: all 0.15s;
+    }
+
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+    }
+
+    .menu-item.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-left: 3px solid var(--accent);
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: 44px 56px;
+      max-width: 1020px;
+    }
+
+    h1, h2, h3, h4 {
+      color: var(--text);
+      letter-spacing: -0.02em;
+      margin-top: 36px;
+      margin-bottom: 16px;
+      font-weight: 800;
+    }
+
+    h1 { font-size: 32px; margin-top: 0; }
+    h2 { font-size: 22px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 18px; color: #e2e8f0; }
+
+    p { margin-bottom: 18px; color: #cbd5e1; font-size: 15px; }
+
+    pre {
+      background: #090a12;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin: 20px 0;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      color: #cbd5e1;
+      box-shadow: 0 10px 25px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #38bdf8;
+    }
+
+    pre code { background: transparent; padding: 0; color: inherit; }
+
+    .table-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow-x: auto;
+      margin: 24px 0 40px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--surface2);
+      padding: 14px 20px;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .mermaid-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin: 24px 0;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .content { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <nav class="nav">
+    <a href="index.html" class="brand">
+      <div class="brand-icon">⚡</div>
+      <span>Veloctra Data Platform</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="architecture.html" class="active">Architecture</a></li>
+      <li><a href="sharding.html">Sharding</a></li>
+      <li><a href="setup.html">Quickstart</a></li>
+      <li><a href="usage.html">Studio & API</a></li>
+      <li><a href="examples.html">Examples</a></li>
+      <li>
+        <a href="https://github.com/vaagatech/veloctra-data-platform" target="_blank" class="github-btn">
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          <span>GitHub</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="container">
+    <aside class="sidebar">
+      <div class="menu-group">
+        <div class="menu-title">Platform Guides</div>
+        <a class="menu-item" href="index.html">🌟 Why Veloctra?</a>
+        <a class="menu-item active" href="architecture.html">🏛️ System Architecture</a>
+        <a class="menu-item" href="sharding.html">⚡ Process Sharding</a>
+        <a class="menu-item" href="use-cases.html">💼 Enterprise Use Cases</a>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-title">Getting Started</div>
+        <a class="menu-item" href="setup.html">🚀 Setup & Deployment</a>
+        <a class="menu-item" href="usage.html">📖 Usage & Studio UI</a>
+        <a class="menu-item" href="examples.html">🧪 Pipeline YAMLs</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <h1>🏛️ System Architecture Blueprint</h1>
+      <p>The <strong>Veloctra Data Platform</strong> is engineered as a zero-memory-leak, high-throughput data streaming platform built on top of modular Python/FastAPI packages and React 18 frontend consoles.</p>
+
+      <div class="mermaid-box">
+        <pre class="mermaid">
+graph TD
+    subgraph Client & Management Layer
+        UI["🖥️ React 18 / Tailwind Management Console<br/>• Pipeline Studio (CRUD & 1-Click Publish)<br/>• Connection Manager (Encrypted Credentials)<br/>• Observability Center (Live Sparklines & Gauges)"]
+    end
+
+    subgraph Control Plane & Security
+        API["⚡ FastAPI Enterprise Gateway (veloctra-api)<br/>• JWT Multi-Tenant Auth & 5-Role RBAC<br/>• Double Envelope Encryption Service (Fernet + ChaCha20)"]
+        FSM["🔄 Finite State Machine (veloctra-state)<br/>• 11-State Deterministic Lifecycle<br/>• Dynamic MongoDB (veloctra_system) & SQLite Store"]
+    end
+
+    subgraph Data Plane & Execution Engine
+        ORCH["⚙️ Pipeline Orchestrator (veloctra-orchestrator)<br/>• Intelligent MemoryGuard (75% RAM/CPU Ceiling)<br/>• Dynamic Chunk Sizing (10k → 50 → 1 row on huge blobs)<br/>• Fault-Isolated DLQ Row-by-Row Fallback Router"]
+        TRANS["⚡ Vector Engine (veloctra-transformers)<br/>• PyArrow / Polars Columnar Transforms<br/>• Field-Level Column Encryption (AES-256-GCM)<br/>• Dynamic Rules & WeakRef Plugin Sandbox"]
+    end
+
+    subgraph Connectors & Sinks
+        CONN["🔌 Universal Connectors (veloctra-connectors)<br/>• SQL: PostgreSQL (asyncpg), MySQL, SQLite<br/>• NoSQL: MongoDB, Cassandra, Redis, DynamoDB<br/>• Lakehouse: Parquet, CSV, S3, GCS, Local FilePartitioner"]
+    end
+
+    UI -->|REST & WebSockets| API
+    API --> FSM
+    API --> ORCH
+    ORCH --> FSM
+    ORCH --> TRANS
+    ORCH --> CONN
+        </pre>
+      </div>
+
+      <h2 id="packages">📦 Monorepo Package Directory</h2>
+      <p>The core platform is strictly divided into 8 isolated packages inside <code>packages/</code>:</p>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Location</th>
+              <th>Core Responsibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>veloctra-core</code></td>
+              <td><code>packages/veloctra-core</code></td>
+              <td>Settings management (Pydantic), logging formats, and core protocol schemas.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-security</code></td>
+              <td><code>packages/veloctra-security</code></td>
+              <td>Double Envelope Encryption (Fernet + ChaCha20-Poly1305), KeyRotationManager, and 5-role RBAC.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-state</code></td>
+              <td><code>packages/veloctra-state</code></td>
+              <td>Deterministic 11-State FSM, checkpoint engine, and MongoDB (<code>veloctra_system</code>) / SQLite store.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-resilience</code></td>
+              <td><code>packages/veloctra-resilience</code></td>
+              <td>Circuit Breaker automaton (CLOSED/OPEN/HALF_OPEN) and AWS Full Jitter retry backoff.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-connectors</code></td>
+              <td><code>packages/veloctra-connectors</code></td>
+              <td>Streaming drivers for PostgreSQL, MySQL, SQLite, MongoDB, Cassandra, Redis, and Universal File System.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-transformers</code></td>
+              <td><code>packages/veloctra-transformers</code></td>
+              <td>PyArrow & Polars vectorized transforms, AES-256-GCM cipher engine, and auto-sized <code>FilePartitioner</code>.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-orchestrator</code></td>
+              <td><code>packages/veloctra-orchestrator</code></td>
+              <td>Stream execution coordinator, <code>MemoryGuard</code> resource governor, and DLQ row-by-row fallback handler.</td>
+            </tr>
+            <tr>
+              <td><code>veloctra-api</code></td>
+              <td><code>packages/veloctra-api</code></td>
+              <td>FastAPI application gateway, JWT auth middleware, and sub-second WebSocket telemetry broadcaster.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>🔄 Deterministic 11-State Finite State Machine (FSM)</h2>
+      <p>Pipeline lifecycles are governed by a strictly validated state machine preventing race conditions or inconsistent progress:</p>
+      <div class="mermaid-box">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> VALIDATING
+    VALIDATING --> EXTRACTING
+    EXTRACTING --> TRANSFORMING
+    TRANSFORMING --> LOADING
+    LOADING --> CHECKPOINTING
+    CHECKPOINTING --> TRANSFORMING: Next Batch
+    CHECKPOINTING --> COMPLETED: Final Batch
+    
+    EXTRACTING --> PAUSED: User Action
+    TRANSFORMING --> RETRYING: Network Glitch
+    TRANSFORMING --> DLQ_ROUTED: Poison Pill Record
+    LOADING --> DLQ_ROUTED: Insertion Error
+    DLQ_ROUTED --> CHECKPOINTING: Valid Rows Saved
+    
+    PAUSED --> EXTRACTING: Resume
+    RETRYING --> TRANSFORMING: Recovered
+    COMPLETED --> [*]
+        </pre>
+      </div>
+
+      <h2>🔐 Double Envelope AEAD Encryption & Key Rotation</h2>
+      <p>To eliminate credential leakage from static configuration files, database connections and API tokens are double-encrypted before persisting in MongoDB:</p>
+      <pre><code>Plaintext Credential / Secret
+             │
+             ▼
+[ Layer 1: Fernet (AES-128-CBC + HMAC-SHA256) with Master Key ]
+             │
+             ▼
+[ Layer 2: ChaCha20-Poly1305 AEAD with Secondary Key + Tenant AAD ]
+             │
+             ▼
+Stored Format: enc:v1:&lt;nonce_b64&gt;:&lt;ciphertext_b64&gt;</code></pre>
+
+      <p><strong>Zero-Downtime Key Rotation:</strong> The <code>KeyRotationManager</code> maintains versioned keyrings. When keys are rotated to <code>v2</code>, existing tokens under <code>v1</code> remain decryptable, while all new or updated credentials are encrypted under <code>v2</code> seamlessly.</p>
+    </main>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        darkMode: true,
+        background: '#10131f',
+        primaryColor: '#6366f1',
+        primaryTextColor: '#f8fafc',
+        primaryBorderColor: 'rgba(99, 102, 241, 0.4)',
+        lineColor: '#06b6d4',
+        secondaryColor: '#181c2d',
+        tertiaryColor: '#22273e'
+      }
+    });
+  </script>
+</body>
+</html>
