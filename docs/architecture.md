@@ -1,83 +1,107 @@
-# Enterprise Production Architecture Blueprint
+# 🏛️ Veloctra Production Architecture Blueprint
 
 ## Architectural Overview
 
-The **Enterprise ETL Engine** is built as a zero-memory-leak, high-volume streaming data transformation and migration platform. It follows a decoupled monorepo design where storage connectors, resilience layers, state machines, and vectorised PyArrow transformers communicate via standard interfaces.
+The **Veloctra Data Platform** is built as an enterprise-grade, memory-governed streaming data transformation and migration platform. It follows a decoupled monorepo design where storage connectors, resilience layers, state machines, and vectorised PyArrow transformers communicate via standard protocols.
 
-```
-+-------------------------------------------------------------------------------------------------------------------+
-|                                      REACT 18 + TYPESCRIPT MANAGEMENT CONSOLE                                     |
-|  - RBAC Engine & Workspace Isolation                     - Interactive Config Editor & Schema Validator          |
-|  - Real-Time WebSocket Progress Charts                   - FSM Job Monitor, DLQ Replay & Audit Logs               |
-+-------------------------------------------------------------------------------------------------------------------+
-                                                          | REST / WebSockets (JWT + TLS 1.3 + Secret Scrubbing)
-                                                          v
-+-------------------------------------------------------------------------------------------------------------------+
-|                                      CONTROL PLANE & STATE MACHINE (etl-state)                                     |
-|  - Deterministic 11-State FSM (CREATED -> VALIDATING -> EXTRACTING -> TRANSFORMING -> LOADING -> COMPLETED)        |
-|  - SQLite WAL Checkpointing Engine (Atomic per-chunk progress saving & resume pointer restoration)               |
-|  - Dead Letter Queue (DLQ) Inspector & Automated Row Replay Engine                                                |
-+-------------------------------------------------------------------------------------------------------------------+
-                                                          | Chunk Iteration & Flow Control
-                                                          v
-+-------------------------------------------------------------------------------------------------------------------+
-|                                     DATA PLANE & STREAM PIPELINE (etl-orchestrator)                              |
-|  - Adaptive MemoryGuard: Process RAM Monitoring & Dynamic Backpressure (Halves batch size > 85% RAM)               |
-|  - Zero-Leak Deallocation: Explicit gc.collect() & PyArrow memory release on every chunk cycle                    |
-+-------------------------------------------------------------------------------------------------------------------+
-     |                                                    |                                                 |
-     v                                                    v                                                 v
-+------------------------+           +-----------------------------------------+         +--------------------------+
-|  CONNECTORS            |           |  TRANSFORM ENGINE (etl-transformers)    |         |  RESILIENCE ENGINE       |
-|  (etl-connectors)      |           |                                         |         |  (etl-resilience)        |
-|  - SQL: Postgres, MySQL| --------> |  - Polars LazyFrames Vectorised Logic   | ------> |                          |
-|    & SQLite (Cursor)   |           |  - AES-256-GCM Field-Level Encryption    |         |  - Circuit Breakers      |
-|  - NoSQL: MongoDB,     |           |  - WeakRef Sandboxed Plugin Registry    |         |    (CLOSED/OPEN/HALF_OPEN)|
-|    Cassandra, DynamoDB |           |  - Auto-Sized Partitioned File Sink     |         |  - AWS Full Jitter Retry |
-|  - Object Store: S3,   |           |    (Parquet / CSV output files)        |         |    Exponential Backoff   |
-|    GCS, Azure, Local   |           +-----------------------------------------+         +--------------------------+
-+------------------------+
+```mermaid
+graph TD
+    subgraph Client & Management Layer
+        UI["🖥️ React 18 / Tailwind Management Console<br/>• Pipeline Studio (CRUD & 1-Click Publish)<br/>• Connection Manager (Encrypted Credentials)<br/>• Observability Center (Live Sparklines & Gauges)"]
+    end
+
+    subgraph Control Plane & Security
+        API["⚡ FastAPI Enterprise Gateway (veloctra-api)<br/>• JWT Multi-Tenant Auth & 5-Role RBAC<br/>• Double Envelope Encryption Service (Fernet + ChaCha20)"]
+        FSM["🔄 Finite State Machine (veloctra-state)<br/>• 11-State Deterministic Lifecycle<br/>• Dynamic MongoDB (veloctra_system) & SQLite Store"]
+    end
+
+    subgraph Data Plane & Execution Engine
+        ORCH["⚙️ Pipeline Orchestrator (veloctra-orchestrator)<br/>• Intelligent MemoryGuard (75% RAM/CPU Ceiling)<br/>• Dynamic Chunk Sizing (10k → 50 → 1 row on huge blobs)<br/>• Fault-Isolated DLQ Row-by-Row Fallback Router"]
+        TRANS["⚡ Vector Engine (veloctra-transformers)<br/>• PyArrow / Polars Columnar Transforms<br/>• Field-Level Column Encryption (AES-256-GCM)<br/>• Dynamic Rules & WeakRef Plugin Sandbox"]
+    end
+
+    subgraph Connectors & Sinks
+        CONN["🔌 Universal Connectors (veloctra-connectors)<br/>• SQL: PostgreSQL (asyncpg), MySQL, SQLite<br/>• NoSQL: MongoDB, Cassandra, Redis, DynamoDB<br/>• Lakehouse: Parquet, CSV, S3, GCS, Local FilePartitioner"]
+    end
+
+    UI -->|REST & WebSockets| API
+    API --> FSM
+    API --> ORCH
+    ORCH --> FSM
+    ORCH --> TRANS
+    ORCH --> CONN
 ```
 
 ---
 
 ## Package Architecture (Monorepo)
 
-The repository is partitioned into modular packages inside `packages/`:
+The repository is partitioned into 8 modular packages inside `packages/`:
 
-| Package | Path | Description |
-|---------|------|-------------|
-| `etl-core` | [`packages/etl-core`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-core) | Protocols and base stream interfaces. |
-| `etl-security` | [`packages/etl-security`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-security) | bcrypt hashing, JWT validation, 5-role RBAC, and Vault/AWS Secrets Manager resolution. |
-| `etl-state` | [`packages/etl-state`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-state) | Deterministic 11-state FSM state machine and SQLite WAL checkpoint store. |
-| `etl-resilience` | [`packages/etl-resilience`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-resilience) | Circuit Breaker automaton and AWS Full Jitter backoff logic. |
-| `etl-connectors` | [`packages/etl-connectors`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-connectors) | Stream readers/writers for PostgreSQL, MySQL, SQLite, MongoDB, Cassandra, DynamoDB, and Object Storage. |
-| `etl-transformers` | [`packages/etl-transformers`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-transformers) | Polars/PyArrow vectorised transformations, AES-256-GCM cipher engine, and plugin registry. |
-| `etl-orchestrator` | [`packages/etl-orchestrator`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-orchestrator) | `PipelineOrchestrator` controller and `MemoryGuard` RAM backpressure manager. |
-| `etl-api` | [`packages/etl-api`](file:///Users/karthiksp/projects/etl-sql-nosql/packages/etl-api) | FastAPI REST endpoints, security header middleware, and WebSocket telemetry broadcaster. |
+| Package | Directory | Description |
+| :--- | :--- | :--- |
+| `veloctra-core` | `packages/veloctra-core` | Environment settings, Pydantic schema validation, and logging. |
+| `veloctra-security` | `packages/veloctra-security` | Double Envelope Encryption (Fernet + ChaCha20-Poly1305), KeyRotationManager, 5-role RBAC, and Secret resolution. |
+| `veloctra-state` | `packages/veloctra-state` | Deterministic 11-state FSM state machine and MongoDB (`veloctra_system`) / SQLite checkpoint store. |
+| `veloctra-resilience` | `packages/veloctra-resilience` | Circuit Breaker automaton (CLOSED/OPEN/HALF_OPEN) and AWS Full Jitter exponential backoff. |
+| `veloctra-connectors` | `packages/veloctra-connectors` | Streaming connectors for PostgreSQL, MySQL, SQLite, MongoDB, Cassandra, Redis, DynamoDB, and Universal File System. |
+| `veloctra-transformers` | `packages/veloctra-transformers` | PyArrow / Polars columnar vector transformations, AES-256-GCM cipher engine, and auto-sized `FilePartitioner`. |
+| `veloctra-orchestrator` | `packages/veloctra-orchestrator` | `PipelineOrchestrator` controller, `MemoryGuard` resource governor, and DLQ row-by-row fallback handler. |
+| `veloctra-api` | `packages/veloctra-api` | FastAPI REST endpoints, security header middleware, and WebSocket telemetry broadcaster. |
 
 ---
 
 ## Finite State Machine (FSM) Transition Matrix
 
-The state machine enforces valid execution flows. Invalid state skips raise `InvalidTransitionError`:
+The state machine enforces valid execution flows. Invalid transitions raise `FSMError`:
 
-```
-CREATED -> VALIDATING -> EXTRACTING -> TRANSFORMING -> LOADING -> CHECKPOINTING -> COMPLETED
-                                |             |           |             |
-                                v             v           v             | (Next Chunk)
-                             PAUSED       RETRYING    DLQ_ROUTED <------+
-                                |             |
-                                +----> EXTRACTING (Resume)
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> VALIDATING
+    VALIDATING --> EXTRACTING
+    EXTRACTING --> TRANSFORMING
+    TRANSFORMING --> LOADING
+    LOADING --> CHECKPOINTING
+    CHECKPOINTING --> TRANSFORMING: Next Batch
+    CHECKPOINTING --> COMPLETED: Final Batch
+    
+    EXTRACTING --> PAUSED: User Action
+    TRANSFORMING --> RETRYING: Network Glitch
+    TRANSFORMING --> DLQ_ROUTED: Poison Pill Record
+    LOADING --> DLQ_ROUTED: Insertion Error
+    DLQ_ROUTED --> CHECKPOINTING: Valid Rows Saved
+    
+    PAUSED --> EXTRACTING: Resume
+    RETRYING --> TRANSFORMING: Recovered
+    COMPLETED --> [*]
 ```
 
 ---
 
-## Resilience & Memory Management Guarantees
+## Double Envelope Encryption & Key Rotation
 
-1. **AWS Full Jitter Backoff**:
-   Calculated as `sleep = random.uniform(0, min(cap, base * 2^attempt))`. Prevents thundering-herd issues under database retries.
-2. **Circuit Breaker Automaton**:
-   State shifts `CLOSED` → `OPEN` (after 5 failures) → `HALF_OPEN` (after 30s cooldown). Prevents cascading failures into degraded backends.
-3. **Adaptive MemoryGuard**:
-   Monitors process RAM using `psutil`. If RAM exceeds 85%, chunk size is halved dynamically. If RAM exceeds 95%, execution pauses for GC.
+To protect database DSNs, API keys, and private tokens from filesystem leaks or database breaches, Veloctra enforces **Double Envelope Encryption**:
+
+```
+Plaintext Credential / Secret
+             │
+             ▼
+[ Layer 1: Fernet (AES-128-CBC + HMAC-SHA256) with Master Key ]
+             │
+             ▼
+[ Layer 2: ChaCha20-Poly1305 AEAD with Secondary Key + Tenant AAD ]
+             │
+             ▼
+Stored Format: enc:v1:<nonce_b64>:<ciphertext_b64>
+```
+
+- **Zero Downtime Key Rotation**: When rotating keys (`v1` $\rightarrow$ `v2`), existing tokens remain decryptable while all new or updated credentials are automatically encrypted under the new active version.
+
+---
+
+## 🛡️ Intelligent MemoryGuard (75% Resource Ceiling)
+
+The `MemoryGuard` protects the host system from out-of-memory crashes by maintaining strict resource governance:
+1. **Dynamic Chunk Resizing**: Calculates record byte density per batch. For huge multi-megabyte payloads, chunk size is reduced to **1 record per chunk**.
+2. **Resource Backpressure**: If RAM or CPU exceeds 75% or 85%, chunk sizes are halved and explicit Python Garbage Collection (`gc.collect()`) is triggered, reserving $\ge$25% headroom.

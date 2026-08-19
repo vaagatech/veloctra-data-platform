@@ -1,35 +1,50 @@
-# Setup & Deployment Guide
+# 🚀 Setup & Deployment Guide
 
-## Prerequisites
-
-- **Python**: 3.10+ (tested on Python 3.11)
-- **Node.js**: 18+ (tested on Node 24.18)
-- **Pip**: 23+
+This guide covers installing, configuring, and deploying the **Veloctra Data Platform** in development and production environments.
 
 ---
 
-## Local Monorepo Setup
+## 1. System Requirements
 
+- **Operating System**: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+), macOS (Apple Silicon or Intel), or Windows (WSL2).
+- **Python**: 3.10, 3.11, or 3.12
+- **Node.js**: $\ge$ 18.0 (with npm $\ge$ 9.0)
+- **State Store**: MongoDB $\ge$ 5.0 (Recommended for production) or SQLite (Default local fallback)
+- **Target Databases**: PostgreSQL $\ge$ 13, MySQL $\ge$ 8.0, MongoDB $\ge$ 5.0
+
+---
+
+## 2. Local Monorepo Installation
+
+### Clone the Repository
 ```bash
-# 1. Clone workspace
-cd /Users/karthiksp/projects/etl-sql-nosql
+git clone git@github.com:vaagatech/veloctra-data-platform.git
+cd veloctra-data-platform
+```
 
-# 2. Install base dependencies
-python3 -m pip install -r requirements.txt
+### Python Virtual Environment Setup
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 
-# 3. Install Monorepo packages in editable mode
-python3 -m pip install -e packages/etl-core \
-                       -e packages/etl-security \
-                       -e packages/etl-state \
-                       -e packages/etl-resilience \
-                       -e packages/etl-connectors \
-                       -e packages/etl-transformers \
-                       -e packages/etl-orchestrator \
-                       -e packages/etl-api
+# Install core dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 
-# 4. Install & build React UI
+# Install all monorepo packages in editable mode
+pip install -e packages/veloctra-core \
+            -e packages/veloctra-security \
+            -e packages/veloctra-state \
+            -e packages/veloctra-resilience \
+            -e packages/veloctra-connectors \
+            -e packages/veloctra-transformers \
+            -e packages/veloctra-orchestrator \
+            -e packages/veloctra-api
+```
+
+### Frontend Build (Management Console)
+```bash
 cd apps/management-ui
-
 npm install
 npm run build
 cd ../..
@@ -37,40 +52,71 @@ cd ../..
 
 ---
 
-## Running the API & Management UI
+## 3. Environment Configuration (`.env`)
 
-Start the FastAPI server:
+Create a `.env` file from the provided `.env.example`:
 
 ```bash
-uvicorn enterprise_etl_engine.api.main:app --reload --port 8000
+cp .env.example .env
 ```
 
-Open your browser to:
-- **Management Console**: [http://localhost:8000/login](http://localhost:8000/login) (Default credentials: `admin` / `changeme`)
-- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+Key environment variables:
+```ini
+# Application Server
+PORT=8008
+HOST=0.0.0.0
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+
+# State Backend (MongoDB recommended for production)
+STATE_STORE_TYPE=mongodb
+MONGO_DSN=mongodb://localhost:27017
+MONGO_SYSTEM_DB=veloctra_system
+
+# Security & Double Envelope Encryption
+SECRET_KEY=supersecretjwtkey_replace_in_production
+FERNET_PRIMARY_KEY=YOUR_BASE64_32_BYTE_FERNET_KEY
+CHACHA_SECONDARY_KEY=YOUR_HEX_32_BYTE_CHACHA_KEY
+```
 
 ---
 
-## Running Tests
+## 4. Starting and Stopping the Engine
 
-Execute the full 39-test unit suite:
+The platform includes production daemon control scripts:
 
+### Start the Engine
 ```bash
-python3 -m pytest tests/ -v
+PORT=8008 ./start.sh
+```
+Output:
+```
+==================================================================
+ ⚡ Veloctra Engine — Enterprise ETL Platform Startup
+==================================================================
+🚀 Starting server daemon on http://localhost:8008...
+==================================================================
+ ✅ Veloctra Engine Started Successfully!
+   - Management Console : http://localhost:8008
+   - Login URL          : http://localhost:8008/login
+   - REST API Docs      : http://localhost:8008/docs
+   - Process PID        : 51553
+   - Server Log File    : ./app.log
+   - Credentials        : admin / changeme
+==================================================================
+```
+
+### Stop the Engine Gracefully
+```bash
+./stop.sh
 ```
 
 ---
 
-## Docker Deployment
+## 5. Docker Deployment
 
-Build and run via Docker:
+To run Veloctra inside a containerized environment:
 
 ```bash
-# Build production container image
-docker build -t enterprise-etl-engine:latest .
-
-# Run container listening on port 8000
-docker run -d -p 8000:8000 \
-  -e APP_ENCRYPTION_KEY="your-32-byte-base64-key" \
-  --name etl-engine enterprise-etl-engine:latest
+docker-compose up -d --build
 ```

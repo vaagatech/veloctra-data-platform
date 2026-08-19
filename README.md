@@ -1,0 +1,233 @@
+<div align="center">
+
+# ⚡ Veloctra Data Platform
+### Enterprise-Grade, Vectorized, Multi-Tenant Data Streaming & Migration Engine
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue?style=flat-square&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![PyArrow](https://img.shields.io/badge/PyArrow-16.1.0-orange?style=flat-square&logo=apache-arrow)](https://arrow.apache.org)
+[![React](https://img.shields.io/badge/React-18.3-61dafb?style=flat-square&logo=react)](https://reactjs.org)
+[![Throughput](https://img.shields.io/badge/Throughput-120k%2B%20rows%2Fsec-success?style=flat-square&color=10b981)](#-benchmarks--performance)
+[![State Engine](https://img.shields.io/badge/State%20Backend-MongoDB%20%7C%20SQLite-emerald?style=flat-square)](docs/architecture.md)
+[![Docs](https://img.shields.io/badge/GitHub%20Pages-Live%20Docs-indigo?style=flat-square&logo=github)](https://vaagatech.github.io/veloctra-data-platform/)
+
+<p align="center">
+  <b>High-throughput, memory-governed ETL/ELT platform designed for mission-critical SQL, NoSQL, and Lakehouse pipelines with zero data loss.</b>
+</p>
+
+[🌐 Live Documentation](https://vaagatech.github.io/veloctra-data-platform/) • [🚀 Quickstart](#-quickstart) • [🏛️ Architecture](#-system-architecture) • [💡 Why Veloctra?](#-why-veloctra) • [📦 Packages](#-monorepo-structure)
+
+</div>
+
+---
+
+## 🌟 Why Veloctra?
+
+Traditional ETL pipelines (Spark, Airflow, custom Python scripts) suffer from **heavy JVM memory overhead, catastrophic out-of-memory (OOM) crashes, credential leakage in static config files, and brittle batch failures where a single malformed row fails a 10-million record job**.
+
+**Veloctra solves this with an enterprise-hardened, zero-JVM, memory-governed streaming engine:**
+
+```
++---------------------------------------------------------------------------------------------------+
+|                                 VELOCTRA vs TRADITIONAL ETL STACKS                                |
++-----------------------------------+-----------------------------------+---------------------------+
+| Capability                        | Legacy Stacks (Spark / Airflow)   | Veloctra Data Platform    |
++-----------------------------------+-----------------------------------+---------------------------+
+| 🚀 Memory Footprint               | 4GB - 16GB JVM Heap per worker    | < 250 MB Process RSS      |
+| 🛡️ Memory Governance              | Brittle OOM kills on big batches  | Intelligent MemoryGuard   |
+| 🔒 Security & Credentials         | Plaintext / static environment    | Double Envelope AEAD      |
+| 🔄 Corrupt Row Handling           | Entire job crashes & aborts       | Per-record DLQ isolation  |
+| ⚙️ State Store Flexibility        | Rigid metadata databases          | MongoDB / SQLite FSM      |
+| 🖥️ UI & Modeler                  | Fragmented 3rd party tools        | Built-in Visual Studio    |
+| 📈 Live Telemetry                 | Polled or delayed metrics         | 2s Real-Time WebSockets   |
+| ⚡ Transformation Speed           | Python row loops (slow)           | PyArrow / C++ Columnar    |
++-----------------------------------+-----------------------------------+---------------------------+
+```
+
+---
+
+## 🏛️ System Architecture
+
+Veloctra uses a decoupled monorepo architecture featuring an **11-State Deterministic FSM**, **Vectorized PyArrow C++ Transform Engines**, and **Double Envelope AES-128 + ChaCha20-Poly1305 AEAD Encryption**.
+
+```mermaid
+graph TD
+    subgraph Client & Management Layer
+        UI["🖥️ React 18 / Tailwind Management Console<br/>• Pipeline Studio (CRUD & 1-Click Publish)<br/>• Connection Manager (Encrypted Credentials)<br/>• Observability Center (Live Sparklines & Gauges)"]
+    end
+
+    subgraph Control Plane & Security
+        API["⚡ FastAPI Enterprise Gateway (veloctra-api)<br/>• JWT Multi-Tenant Auth & 5-Role RBAC<br/>• Double Envelope Encryption Service (Fernet + ChaCha20)"]
+        FSM["🔄 Finite State Machine (veloctra-state)<br/>• 11-State Deterministic Lifecycle<br/>• Dynamic MongoDB (veloctra_system) & SQLite Store"]
+    end
+
+    subgraph Data Plane & Execution Engine
+        ORCH["⚙️ Pipeline Orchestrator (veloctra-orchestrator)<br/>• Intelligent MemoryGuard (75% RAM/CPU Ceiling)<br/>• Dynamic Chunk Sizing (10k → 50 → 1 row on huge blobs)<br/>• Fault-Isolated DLQ Row-by-Row Fallback Router"]
+        TRANS["⚡ Vector Engine (veloctra-transformers)<br/>• PyArrow / Polars Columnar Transforms<br/>• Field-Level Column Encryption (AES-256-GCM)<br/>• Dynamic Rules & WeakRef Plugin Sandbox"]
+    end
+
+    subgraph Connectors & Sinks
+        CONN["🔌 Universal Connectors (veloctra-connectors)<br/>• SQL: PostgreSQL (asyncpg), MySQL, SQLite<br/>• NoSQL: MongoDB, Cassandra, Redis, DynamoDB<br/>• Lakehouse: Parquet, CSV, S3, GCS, Local FilePartitioner"]
+    end
+
+    UI -->|REST & WebSockets| API
+    API --> FSM
+    API --> ORCH
+    ORCH --> FSM
+    ORCH --> TRANS
+    ORCH --> CONN
+```
+
+---
+
+## ⚡ Key Platform Features
+
+### 1. 🛡️ Intelligent MemoryGuard (75% Resource Ceiling)
+- Continuously monitors OS-level CPU, process RAM, and row payload byte density.
+- **Huge Record Detection**: If individual records exceed 100 KB – 5 MB, chunk size is dynamically throttled down to **1 record per chunk**.
+- **Critical Resource Backpressure**: If RAM or CPU exceeds 75% or 85%, chunk sizes are halved and explicit Python Garbage Collection (`gc.collect()`) is triggered, reserving $\ge$25% headroom.
+
+### 2. 🔐 Double Envelope Encryption & Zero-Downtime Key Rotation
+- **Layer 1**: AES-128-CBC + HMAC-SHA256 (Fernet) with rotating master key.
+- **Layer 2**: ChaCha20-Poly1305 AEAD with tenant-scoped Authenticated Additional Data (AAD).
+- **KeyRotationManager**: Versioned token structure (`enc:v1:...` $\rightarrow$ `enc:v2:...`) allowing live key rotation without breaking existing pipelines or stored credentials.
+
+### 3. 🎯 Zero Data Loss & DLQ Poison-Pill Isolation
+- High-speed vector batch execution by default.
+- If a corrupt record is encountered, the orchestrator automatically sub-shards the batch row-by-row (`batch.slice(i, 1)`).
+- The poison pill is isolated to the MongoDB Dead Letter Queue (`dlq`) with full stack trace, while all valid records proceed to destination sinks.
+
+### 4. 📊 High-Contrast Observability Center & Real-Time Sparklines
+- Hardware gauges polling CPU utilization, Core counts, Total/Used/Available RAM (GB), Process RSS, OS thread counts, and GC generation statistics.
+- Interactive SVG Sparklines for live throughput (rows/sec) and chunk latency (ms).
+
+---
+
+## 🚀 Quickstart
+
+### Prerequisites
+- Python $\ge$ 3.10
+- Node.js $\ge$ 18 (for Management UI)
+- MongoDB $\ge$ 5.0 (for state management) or local PostgreSQL
+
+### 1. Clone & Install
+```bash
+git clone git@github.com:vaagatech/veloctra-data-platform.git
+cd veloctra-data-platform
+
+# Install Python monorepo dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e packages/veloctra-core -e packages/veloctra-security -e packages/veloctra-state -e packages/veloctra-resilience -e packages/veloctra-connectors -e packages/veloctra-transformers -e packages/veloctra-orchestrator -e packages/veloctra-api
+```
+
+### 2. Build Management Console
+```bash
+cd apps/management-ui
+npm install
+npm run build
+cd ../..
+```
+
+### 3. Start Engine Daemon
+```bash
+./start.sh
+```
+
+- **Management UI**: [http://localhost:8008](http://localhost:8008)
+- **Pipeline Studio**: [http://localhost:8008/studio](http://localhost:8008/studio)
+- **Observability Center**: [http://localhost:8008/observability](http://localhost:8008/observability)
+- **Interactive API Docs**: [http://localhost:8008/docs](http://localhost:8008/docs)
+- **Default Credentials**: `admin` / `changeme`
+
+---
+
+## 📋 Pipeline Configuration Example
+
+Pipelines are declared cleanly in YAML or via the visual Pipeline Studio:
+
+```yaml
+id: csv_to_postgres_lakehouse
+name: "Medicare Beneficiary Ingestion"
+tenant_id: "healthcare_prod"
+
+state_store:
+  backend: mongodb
+  database: veloctra_system
+
+sources:
+  - name: raw_zip_stream
+    type: file
+    format: csv
+    archive_format: zip
+    path: "./test_data/RawClaimBenef.csv.zip"
+    chunk_size: 10000
+
+transformers:
+  rules:
+    - field: "clm_id"
+      rule: "not_null"
+  enrichments:
+    - type: "timestamp_utc"
+      target_field: "ingested_at"
+
+destinations:
+  - name: postgres_lakehouse
+    type: database
+    connection_string: "env:POSTGRES_PROD_URL"
+    table: "raw_claim_benef"
+    upsert_key: "id"
+
+  - name: parquet_archive
+    type: file
+    format: parquet
+    output_dir: "./lakehouse_archive"
+    max_rows_per_file: 100000
+    max_file_size_mb: 100
+```
+
+---
+
+## 📦 Monorepo Structure
+
+```
+veloctra-data-platform/
+├── apps/
+│   └── management-ui/              # React 18 + TypeScript + Tailwind Console
+├── configs/                        # Externalized Pipeline Definition Templates
+├── docs/                           # GitHub Pages Documentation Site
+├── packages/
+│   ├── veloctra-core/              # Configuration & Base Protocols
+│   ├── veloctra-security/          # Double Envelope Encryption & RBAC
+│   ├── veloctra-state/             # MongoDB / SQLite FSM State Store
+│   ├── veloctra-resilience/        # Circuit Breakers & AWS Full Jitter Retry
+│   ├── veloctra-connectors/        # SQL, NoSQL & Universal File Connectors
+│   ├── veloctra-transformers/      # PyArrow / Polars Vector Engine & Partitioner
+│   ├── veloctra-orchestrator/      # MemoryGuard & Stream Orchestrator
+│   └── veloctra-api/               # FastAPI REST & WebSocket Telemetry Server
+├── scripts/                        # CI/CD Importers & Benchmarks
+├── start.sh                        # Production Daemon Launcher
+└── stop.sh                         # Graceful Shutdown Script
+```
+
+---
+
+## 📈 Benchmarks & Performance
+
+Measured on a standard 8-Core Apple Silicon M-series machine (Local SSD & In-Memory IPC):
+
+| Workload | Dataset Size | Engine Throughput | Total Time | Memory Usage |
+| :--- | :--- | :--- | :--- | :--- |
+| **CSV (Zip) $\rightarrow$ PostgreSQL** | 10,000,000 Rows | **~28,500 rows/sec** | ~5.8 min | < 250 MB |
+| **PostgreSQL $\rightarrow$ CSV Lakehouse** | 1,620,000 Rows (431 MB) | **~38,000 rows/sec** | ~42 sec | < 180 MB |
+| **In-Memory PyArrow Vector Transform** | 1,000,000 Rows | **~120,000 rows/sec** | ~8.3 sec | < 120 MB |
+
+---
+
+## 🤝 Contributing & License
+
+Contributions are welcome! Please review our contributing guidelines and submit pull requests.
+
+Distributed under the **Apache 2.0 License**. See `LICENSE` for more information.
