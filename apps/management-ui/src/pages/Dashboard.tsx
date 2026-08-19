@@ -1206,6 +1206,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
               onRefresh={() => selectedJobId && fetchJobDetails(selectedJobId)}
               token={token}
               projectId={selectedWorkspace}
+              jobs={jobs}
+              selectedJobId={selectedJobId}
+              onSelectJob={(id) => {
+                setSelectedJobId(id);
+                fetchJobDetails(id);
+              }}
             />
           )}
 
