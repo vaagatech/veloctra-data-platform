@@ -91,10 +91,6 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
   // Live System Metrics from GET /metrics/live
   const [liveMetrics, setLiveMetrics] = useState<any>(null);
 
-  // History Metrics State
-  const [metricsHistory, setMetricsHistory] = useState<any>(null);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
-
   // Pipeline Event Log State
   const [pipelineEvents, setPipelineEvents] = useState<any[]>([]);
   const [eventSeverityFilter, setEventSeverityFilter] = useState<string>('all');
@@ -220,34 +216,6 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
     };
   }, [token]);
 
-  const fetchMetricsHistory = async () => {
-    setLoadingMetrics(true);
-    try {
-      let url = `/metrics/history?timeframe=${timeframe}&project_id=${projectId}`;
-      if (timeframe === 'custom' && customFrom && customTo) {
-        const fromTs = new Date(customFrom).getTime() / 1000;
-        const toTs = new Date(customTo).getTime() / 1000;
-        url += `&from_ts=${fromTs}&to_ts=${toTs}`;
-      }
-
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMetricsHistory(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch metrics history:', err);
-    } finally {
-      setLoadingMetrics(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchMetricsHistory();
-  }, [timeframe, projectId]);
-
   const handleGenerateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneratingReport(true);
@@ -349,8 +317,6 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
   const threadCount = liveMetrics?.process?.threads_count ?? 16;
   const gcCounts = liveMetrics?.gc_stats?.counts ?? [12, 1, 0];
   const stateBackend = liveMetrics?.state_backend?.type ?? 'sqlite';
-
-  const datapoints = metricsHistory?.datapoints || [];
 
   // Filtered audit log
   const filteredAuditLog = useMemo(() => {
@@ -751,51 +717,6 @@ export const ObservabilityDashboard: React.FC<ObservabilityDashboardProps> = ({
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Historical Throughput Chart & Metrics Stream */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900">Telemetry History & Throughput Trend</h3>
-            <span className="text-[10px] text-slate-400 font-mono">10s Intervals</span>
-          </div>
-          <div className="text-xs text-slate-500 flex items-center gap-2">
-            {loadingMetrics && <span className="text-indigo-600 animate-pulse font-mono font-semibold">Syncing trend...</span>}
-          </div>
-        </div>
-
-        {datapoints.length > 0 ? (
-          <div className="h-48 flex items-end gap-1.5 pt-6 pb-2 px-2 bg-slate-50 rounded-lg border border-slate-200 overflow-x-auto">
-            {datapoints.map((pt: any, idx: number) => {
-              const maxVal = Math.max(...datapoints.map((p: any) => p.throughput_rows_sec || 100), 100);
-              const heightPct = Math.min(Math.max(((pt.throughput_rows_sec || 0) / maxVal) * 100, 4), 100);
-              return (
-                <div
-                  key={idx}
-                  className="flex-1 min-w-[20px] flex flex-col items-center gap-1 group relative h-full justify-end"
-                >
-                  <div
-                    style={{ height: `${heightPct}%` }}
-                    className="w-full bg-gradient-to-t from-indigo-500 to-cyan-400 rounded-t-sm hover:brightness-110 transition-all cursor-pointer"
-                  />
-                  {/* Tooltip on hover */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-2 bg-slate-900 border border-slate-800 text-[10px] text-white p-2 rounded-lg shadow-2xl z-20 pointer-events-none whitespace-nowrap">
-                    <div>{pt.timestamp}</div>
-                    <div className="font-bold text-cyan-300">{pt.throughput_rows_sec || 0} rows/sec</div>
-                    <div>RAM: {pt.memory_percent || 0}%</div>
-                    <div>CPU: {pt.cpu_percent || 0}%</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="h-48 flex items-center justify-center bg-slate-50 rounded-lg border border-slate-200 text-slate-400 text-xs font-mono">
-            No historical data points in the selected window. Run a pipeline to stream telemetry metrics.
-          </div>
-        )}
       </div>
 
       {/* SECTION: Pipeline Structured Event Log (When a pipeline is selected) */}
