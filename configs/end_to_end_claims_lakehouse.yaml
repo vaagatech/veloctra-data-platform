@@ -1,0 +1,118 @@
+# ==============================================================================
+# Veloctra Data Platform — Unified End-to-End Lakehouse Migration
+# Architecture: Compressed ZIP/CSV Source -> Cleanse & Map -> Dual Destinations (PostgreSQL + MongoDB)
+# ==============================================================================
+
+pipeline_id: end_to_end_claims_lakehouse
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
+version: 1
+description: "Unified single-file pipeline: Streams compressed claims ZIP archive, parses dates (BeneBirthDt, ClaimFromDt, ClaimThruDt), renames fields to PascalCase schema contracts, and fans out simultaneously into PostgreSQL relational tables AND MongoDB JSON document collections."
+
+settings:
+  chunk_size: 10000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+  dlq_enabled: true
+  circuit_breaker_enabled: true
+
+# Error Handling & Governance Policy
+error_handling:
+  policy: threshold
+  max_failure_percent: 5.0
+  max_failure_count: 1000
+  chunk_max_failure_percent: 25.0
+  chunk_max_failure_count: 200
+  log_level: detailed
+
+# Source: Compressed ZIP Archive
+sources:
+  - name: raw_claims_zip_archive
+    type: file
+    format: zip
+    path: "/Users/karthiksp/projects/etl-sql-nosql/test_data/archive.zip"
+    inner_filename: "RawClaimBenef.csv"
+    delimiter: ","
+    has_header: true
+    chunk_size: 10000
+
+# Vectorised Transformations: Date Formatting, Cleanse & Renaming
+transformations:
+  - type: date_format
+    column: BENE_BIRTH_DT
+    target_column: BeneBirthDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+
+  - type: date_format
+    column: BENE_DEATH_DT
+    target_column: BeneDeathDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+
+  - type: date_format
+    column: CLM_FROM_DT
+    target_column: ClaimFromDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+
+  - type: date_format
+    column: CLM_THRU_DT
+    target_column: ClaimThruDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+
+  - type: rename_field
+    field: DESYNPUF_ID
+    new_name: BeneficiaryId
+
+  - type: rename_field
+    field: CLM_ID
+    new_name: ClaimId
+
+  - type: rename_field
+    field: BENE_SEX_IDENT_CD
+    new_name: GenderCode
+
+  - type: rename_field
+    field: BENE_RACE_CD
+    new_name: RaceCode
+
+  - type: rename_field
+    field: SP_STATE_CODE
+    new_name: StateCode
+
+  - type: rename_field
+    field: ICD9_DGNS_CD_1
+    new_name: PrimaryDiagnosisCode
+
+  - type: rename_field
+    field: PRF_PHYSN_NPI_1
+    new_name: AttendingPhysicianNPI
+
+  - type: rename_field
+    field: MEDREIMB_IP
+    new_name: InpatientReimbursementAmt
+
+  - type: rename_field
+    field: MEDREIMB_OP
+    new_name: OutpatientReimbursementAmt
+
+# Simultaneous Dual Target Destinations: PostgreSQL Lakehouse Table + MongoDB NoSQL Collection
+destinations:
+  # Target 1: PostgreSQL Structured Ingestion Table
+  - name: pg_structured_claims
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    table: raw_claim_benef
+    batch_size: 10000
+
+  # Target 2: MongoDB Document Store for Real-Time Querying & Search
+  - name: mongo_claims_document_store
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: claim_beneficiaries
+    upsert_key: ClaimId
+    batch_size: 10000

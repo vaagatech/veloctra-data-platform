@@ -38,24 +38,58 @@ class ArrowTransformEngine:
             if stype == "filter":
                 expr_str = step["expression"]
                 lf = lf.filter(pl.sql_expr(expr_str))
-            elif stype == "cast" or stype == "type_cast":
-                col = step["column"]
-                target_type = getattr(pl, step.get("target_type", "Utf8").capitalize(), pl.Utf8)
-                lf = lf.with_columns(pl.col(col).cast(target_type))
+            elif stype in ("cast", "type_cast"):
+                col = step.get("column") or step.get("field")
+                if col and col in lf.collect_schema().names():
+                    target_type = getattr(pl, step.get("target_type", "Utf8").capitalize(), pl.Utf8)
+                    lf = lf.with_columns(pl.col(col).cast(target_type))
+            elif stype in ("date_format", "format_date", "date_transform"):
+                col = step.get("column") or step.get("field")
+                target_col = step.get("target_column") or step.get("new_name") or col
+                source_fmt = step.get("source_format", "%Y%m%d")
+                target_fmt = step.get("target_format", "%Y-%m-%d")
+                
+                if col and col in lf.collect_schema().names():
+                    # Handle YYYYMMDD string or int to formatted date string (with null-safe handling)
+                    date_expr = (
+                        pl.when(pl.col(col).cast(pl.Utf8).is_in(["0", "", "null", "None", "00000000"]))
+                        .then(None)
+                        .otherwise(
+                            pl.col(col)
+                            .cast(pl.Utf8)
+                            .str.to_date(source_fmt, strict=False)
+                            .dt.to_string(target_fmt)
+                        )
+                        .alias(target_col)
+                    )
+                    lf = lf.with_columns(date_expr)
+                    # If target_col is different from col and col was not explicitly kept, we can keep or drop
             elif stype in ("rename", "rename_field", "rename_column"):
                 field_name = step.get("field") or step.get("column")
                 new_name = step.get("new_name") or step.get("value") or step.get("target")
                 mapping = step.get("mapping") or ({field_name: new_name} if field_name and new_name else {})
                 if mapping:
-                    lf = lf.rename(mapping)
-            elif stype == "drop":
-                cols = step["columns"]
-                lf = lf.drop(cols)
+                    schema_names = lf.collect_schema().names()
+                    valid_mapping = {k: v for k, v in mapping.items() if k in schema_names}
+                    if valid_mapping:
+                        lf = lf.rename(valid_mapping)
+            elif stype in ("select", "select_columns", "select_fields", "keep_columns"):
+                cols = step.get("columns") or step.get("fields") or []
+                schema_names = lf.collect_schema().names()
+                valid_cols = [c for c in cols if c in schema_names]
+                if valid_cols:
+                    lf = lf.select([pl.col(c) for c in valid_cols])
+            elif stype in ("drop", "drop_columns", "drop_fields"):
+                cols = step.get("columns") or step.get("fields") or []
+                schema_names = lf.collect_schema().names()
+                valid_cols = [c for c in cols if c in schema_names]
+                if valid_cols:
+                    lf = lf.drop(valid_cols)
             elif stype == "add_constant":
                 col = step["column"]
                 val = step["value"]
                 lf = lf.with_columns(pl.lit(val).alias(col))
-            elif stype == "script" or stype == "script_transform":
+            elif stype in ("script", "script_transform"):
                 script_steps.append(step)
             elif stype == "plugin":
                 plugin_steps.append(step)

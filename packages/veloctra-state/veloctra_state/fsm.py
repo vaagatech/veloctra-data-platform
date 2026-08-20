@@ -63,6 +63,7 @@ _TRANSITIONS: Dict[PipelineState, FrozenSet[PipelineState]] = {
         PipelineState.LOADING,
         PipelineState.COMPLETED,
         PipelineState.RETRYING,
+        PipelineState.PAUSED,
         PipelineState.FAILED,
         PipelineState.DLQ_ROUTED,
     }),

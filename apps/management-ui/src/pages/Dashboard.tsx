@@ -32,6 +32,7 @@ import {
   Terminal,
   X,
   Clock,
+  CheckCircle2,
 } from 'lucide-react';
 
 const formatJobTime = (ts?: number) => {
@@ -175,6 +176,77 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
   const [encryptedFields, setEncryptedFields] = useState<Record<string, boolean>>({});
   const [schemaConnectionString, setSchemaConnectionString] = useState('raw_claims_zip_file');
   const [schemaLoading, setSchemaLoading] = useState(false);
+
+  // --- Pipeline Import Modal State ---
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importYamlText, setImportYamlText] = useState('');
+  const [importPipelineId, setImportPipelineId] = useState('');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setImportYamlText(text);
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.pipeline_id) setImportPipelineId(parsed.pipeline_id);
+      } catch {
+        const match = text.match(/pipeline_id:\s*([^\s\n]+)/);
+        if (match && match[1]) setImportPipelineId(match[1].trim());
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importYamlText.trim()) return;
+    setImporting(true);
+    setImportStatus(null);
+
+    let pid = importPipelineId.trim();
+    if (!pid) {
+      const match = importYamlText.match(/pipeline_id:\s*([^\s\n]+)/);
+      if (match && match[1]) pid = match[1].trim();
+      else pid = `imported_pipeline_${Date.now()}`;
+    }
+
+    try {
+      const res = await fetch(`/configs/${encodeURIComponent(pid)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          yaml_content: importYamlText,
+          tenant_id: selectedWorkspace
+        })
+      });
+      if (res.ok) {
+        setImportStatus(`Pipeline '${pid}' imported and registered successfully!`);
+        fetchPipelines();
+        setStudioPipelineId(pid);
+        setTimeout(() => {
+          setIsImportModalOpen(false);
+          setImportStatus(null);
+          setImportYamlText('');
+          setImportPipelineId('');
+        }, 1200);
+      } else {
+        const err = await res.json();
+        setImportStatus(`Import Error: ${err.detail || 'Failed to save configuration'}`);
+      }
+    } catch (err: any) {
+      setImportStatus(`Import Error: ${err.message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const fetchSchema = async (customConn?: string) => {
     setSchemaLoading(true);
@@ -950,7 +1022,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                       </button>
 
                       {isErrorExpanded && (
-                        <div className="mt-2.5 p-3.5 bg-slate-900 border border-slate-800 rounded-lg font-mono text-xs text-rose-300 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text shadow-inner">
+                        <div className="mt-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs text-rose-950 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text shadow-inner">
                           {jobError.traceback}
                         </div>
                       )}
@@ -982,15 +1054,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
           {/* Unified Pipeline Studio View */}
           {activeNav === 'studio' && (
             <div className="space-y-4">
-              <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-slate-900">
                 <div>
-                  <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" /> Pipeline Studio & Contract Designer
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600" /> Pipeline Studio & Contract Designer
                   </h2>
-                  <p className="text-xs text-slate-400">Design, edit, validate, version, and publish high-performance streaming pipelines</p>
+                  <p className="text-xs text-slate-500">Design, edit, validate, version, import, and publish high-performance streaming pipelines</p>
                   
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-semibold text-slate-300">Select Pipeline:</span>
+                    <span className="font-semibold text-slate-700">Select Pipeline:</span>
                     <select
                       value={studioPipelineId}
                       onChange={(e) => {
@@ -998,7 +1070,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                         setStudioPipelineId(newId);
                         fetchCurrentConfig(newId);
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 font-mono shadow-sm focus:border-cyan-500 focus:outline-none min-w-[220px]"
+                      className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 font-mono shadow-2xs focus:border-indigo-600 focus:outline-none min-w-[220px]"
                     >
                       {availablePipelines.map((pid) => (
                         <option key={pid} value={pid}>{pid}</option>
@@ -1016,9 +1088,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                           }
                         }
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] transition-colors"
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-200 transition-colors"
                     >
                       + New
+                    </button>
+
+                    <button
+                      onClick={() => setIsImportModalOpen(true)}
+                      className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] flex items-center gap-1 transition-colors"
+                      title="Import YAML or JSON Pipeline Config"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" /> Import Pipeline
                     </button>
 
                     <button
@@ -1040,7 +1120,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                           alert(`Publish error: ${e.message}`);
                         }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow transition-colors flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition-colors flex items-center gap-1"
                     >
                       <Sparkles className="w-3 h-3" /> Publish to Engine
                     </button>
@@ -1063,7 +1143,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                           alert(`Delete error: ${e.message}`);
                         }
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-rose-900/40 hover:bg-rose-800/60 border border-rose-700/50 text-rose-300 font-bold text-[11px] transition-colors"
+                      className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[11px] transition-colors"
                     >
                       Delete
                     </button>
@@ -1071,43 +1151,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                 </div>
 
                 {/* Sub-Tabs Selector inside Studio */}
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 text-xs">
                   <button
                     onClick={() => setStudioSubTab('wizard_step1')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      studioSubTab === 'wizard_step1' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      studioSubTab === 'wizard_step1' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <Sliders className="w-3.5 h-3.5" /> 1. System Selection
                   </button>
                   <button
                     onClick={() => setStudioSubTab('visual_modeler')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      studioSubTab === 'visual_modeler' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      studioSubTab === 'visual_modeler' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <Network className="w-3.5 h-3.5" /> 2. Data Modeler
                   </button>
                   <button
                     onClick={() => setStudioSubTab('consolidate')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      studioSubTab === 'consolidate' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      studioSubTab === 'consolidate' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <Layers className="w-3.5 h-3.5 text-emerald-400" /> N-Table Consolidator
+                    <Layers className="w-3.5 h-3.5" /> N-Table Consolidator
                   </button>
                   <button
                     onClick={() => setStudioSubTab('mapper')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      studioSubTab === 'mapper' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      studioSubTab === 'mapper' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <Network className="w-3.5 h-3.5" /> Schema Contract Mapper
                   </button>
                   <button
                     onClick={() => setStudioSubTab('yaml')}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      studioSubTab === 'yaml' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      studioSubTab === 'yaml' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <FileCode className="w-3.5 h-3.5" /> YAML Editor
@@ -1236,48 +1316,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
         </main>
       </div>
 
-      {/* Full Error Diagnostics Modal */}
+      {/* Full Error Diagnostics Modal (Light Mode, Wrapped & No Horizontal Scroll) */}
       {isErrorModalOpen && jobError && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl space-y-4 p-6 text-slate-100 flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
-                <AlertOctagon className="w-5 h-5 text-rose-500" /> Pipeline Failure Diagnostics — {selectedJobId}
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl space-y-4 p-6 text-slate-900 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-rose-700 flex items-center gap-2">
+                <AlertOctagon className="w-5 h-5 text-rose-600" /> Pipeline Failure Diagnostics — {selectedJobId}
               </h3>
               <button
                 onClick={() => setIsErrorModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+            <div className="space-y-3.5 flex-1 overflow-y-auto overflow-x-hidden pr-1">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <div className="text-slate-500 font-bold uppercase text-[10px]">Error Type</div>
-                  <div className="text-rose-300 font-mono font-bold mt-1">{jobError.error_type || 'ExecutionError'}</div>
+                  <div className="text-rose-800 font-mono font-bold mt-1 break-all">{jobError.error_type || 'ExecutionError'}</div>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <div className="text-slate-500 font-bold uppercase text-[10px]">Failed In Stage</div>
-                  <div className="text-amber-300 font-mono font-bold mt-1">{jobError.failed_at_state || currentState || 'PROCESSING'}</div>
+                  <div className="text-amber-800 font-mono font-bold mt-1 break-all">{jobError.failed_at_state || currentState || 'PROCESSING'}</div>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 col-span-2 sm:col-span-1">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 col-span-2 sm:col-span-1">
                   <div className="text-slate-500 font-bold uppercase text-[10px]">Pipeline ID</div>
-                  <div className="text-indigo-300 font-mono font-bold mt-1 truncate">{selectedJobId}</div>
+                  <div className="text-indigo-800 font-mono font-bold mt-1 truncate">{selectedJobId}</div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1">Primary Error Message</label>
-                <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-200 text-xs font-mono break-words leading-relaxed">
+                <label className="block text-xs font-bold text-slate-700 mb-1">Primary Error Message</label>
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-950 text-xs font-mono break-words break-all leading-relaxed whitespace-pre-wrap overflow-x-hidden">
                   {jobError.message}
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     <Terminal className="w-3.5 h-3.5 text-slate-500" /> Complete Exception Stack Trace & Diagnostics
                   </label>
                   <button
@@ -1286,32 +1366,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                       setCopiedError(true);
                       setTimeout(() => setCopiedError(false), 2000);
                     }}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                    className="text-xs text-indigo-700 hover:text-indigo-900 font-semibold flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 transition-colors"
                   >
-                    {copiedError ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedError ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                     {copiedError ? 'Copied to Clipboard' : 'Copy Trace'}
                   </button>
                 </div>
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-slate-300 max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs text-slate-800 max-h-72 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words break-all leading-relaxed select-text shadow-inner">
                   {jobError.traceback || jobError.message}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
               <button
                 onClick={() => {
                   setIsErrorModalOpen(false);
                   setActiveNav('observability');
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" /> View in Observability
               </button>
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsErrorModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors"
                 >
                   Close
                 </button>
@@ -1320,12 +1400,100 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, onLogout, initialNa
                     setIsErrorModalOpen(false);
                     handleStartJob();
                   }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
                 >
                   <Play className="w-3.5 h-3.5" /> Retry Pipeline Run
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Pipeline Modal (Light Mode) */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6 text-slate-900 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <UploadCloud className="w-5 h-5 text-indigo-600" /> Import Streaming Pipeline Specification
+              </h3>
+              <button
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportStatus(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleImportSubmit} className="space-y-4 flex-1 overflow-y-auto pr-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Upload Pipeline File (.yaml or .json)</label>
+                <input
+                  type="file"
+                  accept=".yaml,.yml,.json"
+                  onChange={handleFileUpload}
+                  className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-slate-200 file:text-xs file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Pipeline ID (Identifier)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. postgres_to_mongo_claims"
+                  value={importPipelineId}
+                  onChange={(e) => setImportPipelineId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Pipeline Specification Content (YAML or JSON)</label>
+                <textarea
+                  rows={10}
+                  placeholder={`pipeline_id: custom_pipeline\nproject_id: ${selectedWorkspace}\nversion: 1\nsources:\n  - name: pg_source\n    type: database\n    connection_string: "..."\ntransformations: []\ndestinations:\n  - name: mongo_dest\n    type: nosql\n    ...`}
+                  value={importYamlText}
+                  onChange={(e) => setImportYamlText(e.target.value)}
+                  className="w-full p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white resize-y"
+                  required
+                />
+              </div>
+
+              {importStatus && (
+                <div className={`p-3 rounded-lg border text-xs font-semibold flex items-center gap-2 ${
+                  importStatus.includes('Error')
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                }`}>
+                  {importStatus.includes('Error') ? <AlertCircle className="w-4 h-4 text-rose-600" /> : <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                  {importStatus}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setImportStatus(null);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={importing || !importYamlText.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors disabled:opacity-50"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" /> {importing ? 'Importing...' : 'Save & Register Pipeline'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -158,6 +158,159 @@ destinations:
     upsert_key: patient_id
     batch_size: 5000`,
 
+    multiTableToSingleMongo: `project_id: healthcare_prod_workspace
+pipeline_id: postgres_multi_table_to_single_mongo
+name: Multi-Table SQL Consolidation to Single MongoDB Collection
+version: 1
+settings:
+  chunk_size: 5000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+  dlq_enabled: true
+
+error_handling:
+  policy: threshold
+  max_failure_percent: 2.0
+  max_failure_count: 200
+  chunk_max_failure_percent: 15.0
+  chunk_max_failure_count: 50
+
+sources:
+  - name: pg_consolidated_claims_view
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    query: "SELECT desynpuf_id, bene_birth_dt, bene_death_dt, bene_sex_ident_cd, bene_race_cd, sp_state_code, bene_county_cd, clm_id, clm_from_dt, clm_thru_dt, icd9_dgns_cd_1, prf_physn_npi_1, hcpcs_cd_1, medreimb_ip, medreimb_op, medreimb_car FROM raw_claim_benef"
+    chunk_size: 5000
+
+transformations:
+  - type: date_format
+    column: bene_birth_dt
+    target_column: BeneBirthDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+  - type: date_format
+    column: clm_from_dt
+    target_column: ClaimFromDt
+    source_format: "%Y%m%d"
+    target_format: "%Y-%m-%d"
+  - type: rename_field
+    field: desynpuf_id
+    new_name: BeneficiaryId
+  - type: rename_field
+    field: clm_id
+    new_name: ClaimId
+  - type: select_columns
+    columns:
+      - BeneficiaryId
+      - ClaimId
+      - BeneBirthDt
+      - ClaimFromDt
+      - icd9_dgns_cd_1
+      - prf_physn_npi_1
+      - medreimb_ip
+      - medreimb_op
+
+destinations:
+  - name: mongo_unified_claims_collection
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: unified_patient_claims
+    upsert_key: ClaimId
+    batch_size: 5000`,
+
+    multiTableToMultiMongo: `project_id: healthcare_prod_workspace
+pipeline_id: postgres_multi_table_to_multi_mongo
+name: PostgreSQL Multi-Destination Fan-Out Pipeline
+version: 1
+settings:
+  chunk_size: 5000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+
+error_handling:
+  policy: threshold
+  max_failure_percent: 2.0
+  chunk_max_failure_percent: 15.0
+
+sources:
+  - name: pg_healthcare_claims
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    query: "SELECT * FROM raw_claim_benef"
+
+transformations:
+  - type: date_format
+    column: bene_birth_dt
+    target_column: BeneBirthDt
+  - type: rename_field
+    field: desynpuf_id
+    new_name: BeneficiaryId
+
+destinations:
+  - name: mongo_patient_demographics
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: patient_demographics
+    upsert_key: BeneficiaryId
+    batch_size: 5000
+  - name: mongo_clinical_claims
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: clinical_claims
+    upsert_key: ClaimId
+    batch_size: 5000`,
+
+    endToEndLakehouse: `project_id: healthcare_prod_workspace
+pipeline_id: end_to_end_claims_lakehouse
+name: Unified End-to-End Raw Claims Lakehouse Migration
+version: 1
+settings:
+  chunk_size: 10000
+  max_memory_percent: 75.0
+  max_cpu_percent: 75.0
+
+error_handling:
+  policy: threshold
+  max_failure_percent: 5.0
+  chunk_max_failure_percent: 25.0
+
+sources:
+  - name: raw_claims_zip_archive
+    type: file
+    format: zip
+    path: "./test_data/archive.zip"
+    inner_filename: "RawClaimBenef.csv"
+    chunk_size: 10000
+
+transformations:
+  - type: date_format
+    column: BENE_BIRTH_DT
+    target_column: BeneBirthDt
+  - type: rename_field
+    field: DESYNPUF_ID
+    new_name: BeneficiaryId
+
+destinations:
+  - name: pg_relational_dw
+    type: database
+    connection_string: "postgresql+asyncpg://karthiksp@localhost:5432/healthcare_claims"
+    table: "raw_claim_benef"
+    batch_size: 10000
+  - name: mongo_nosql_collection
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: claim_beneficiaries
+    upsert_key: ClaimId
+    batch_size: 5000`,
+
     githubActionsWorkflow: `name: Veloctra Pipeline GitOps CI/CD
 
 on:
@@ -779,6 +932,63 @@ val.upper() if isinstance(val, str) else val
               </div>
               <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-purple-300 max-h-60 overflow-y-auto leading-relaxed">
                 {yamlCatalog.multiTableConsolidation}
+              </pre>
+            </div>
+
+            {/* Template 4: Multi-Table to Single MongoDB Collection */}
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-white text-xs flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" /> 4. SQL Multi-Table Consolidation to Single MongoDB Collection
+                </div>
+                <button
+                  onClick={() => copyToClipboard(yamlCatalog.multiTableToSingleMongo, 'single_mongo')}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/50 text-cyan-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedKey === 'single_mongo' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'single_mongo' ? 'Copied YAML!' : 'Copy Template'}
+                </button>
+              </div>
+              <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-cyan-300 max-h-60 overflow-y-auto leading-relaxed">
+                {yamlCatalog.multiTableToSingleMongo}
+              </pre>
+            </div>
+
+            {/* Template 5: Multi-Table to Multi-MongoDB Collection Fanout */}
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-white text-xs flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" /> 5. Multi-Table SQL Fanout to Multiple MongoDB Collections
+                </div>
+                <button
+                  onClick={() => copyToClipboard(yamlCatalog.multiTableToMultiMongo, 'multi_fanout')}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedKey === 'multi_fanout' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'multi_fanout' ? 'Copied YAML!' : 'Copy Template'}
+                </button>
+              </div>
+              <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-amber-300 max-h-60 overflow-y-auto leading-relaxed">
+                {yamlCatalog.multiTableToMultiMongo}
+              </pre>
+            </div>
+
+            {/* Template 6: Unified End-to-End Lakehouse Migration */}
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-white text-xs flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-rose-400" /> 6. Unified ZIP Archive ➔ Cleanse ➔ Dual Destination (Postgres + MongoDB)
+                </div>
+                <button
+                  onClick={() => copyToClipboard(yamlCatalog.endToEndLakehouse, 'lakehouse')}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedKey === 'lakehouse' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'lakehouse' ? 'Copied YAML!' : 'Copy Template'}
+                </button>
+              </div>
+              <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-rose-300 max-h-60 overflow-y-auto leading-relaxed">
+                {yamlCatalog.endToEndLakehouse}
               </pre>
             </div>
           </div>

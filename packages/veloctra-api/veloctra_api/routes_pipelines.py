@@ -121,14 +121,41 @@ async def get_pipeline_status(
     rows_written = checkpoint.get("rows_written", 0) if checkpoint else 0
     chunks_processed = (checkpoint.get("chunk_index", 0) + 1) if checkpoint else 0
 
+    completion_mem_pct: Optional[float] = None
+    completion_cpu_pct: Optional[float] = None
+    completion_proc_rss_mb: Optional[float] = None
+    completion_proc_cpu_pct: Optional[float] = None
+    failure_policy_summary: Optional[Dict[str, Any]] = None
+
+    error_message: Optional[str] = None
+    error_traceback: Optional[str] = None
+    error_type: Optional[str] = None
+    failed_at_state: Optional[str] = None
+
     for ev in events:
-        if ev.get("to_state") == "COMPLETED" and ev.get("metadata"):
-            try:
-                meta = json.loads(ev["metadata"]) if isinstance(ev["metadata"], str) else ev["metadata"]
-                if isinstance(meta, dict) and "total_rows" in meta:
-                    rows_written = max(rows_written, meta["total_rows"])
-            except Exception:
-                pass
+        to_st = ev.get("to_state")
+        meta_raw = ev.get("metadata")
+        meta = json.loads(meta_raw) if isinstance(meta_raw, str) else (meta_raw if isinstance(meta_raw, dict) else {})
+
+        if to_st == "COMPLETED" and isinstance(meta, dict):
+            if "total_rows" in meta:
+                rows_written = max(rows_written, meta["total_rows"])
+            if "memory_percent" in meta:
+                completion_mem_pct = meta["memory_percent"]
+            if "cpu_percent" in meta:
+                completion_cpu_pct = meta["cpu_percent"]
+            if "process_rss_mb" in meta:
+                completion_proc_rss_mb = meta["process_rss_mb"]
+            if "process_cpu_percent" in meta:
+                completion_proc_cpu_pct = meta["process_cpu_percent"]
+            if "failure_rate_pct" in meta:
+                failure_policy_summary = meta
+
+        if to_st == "FAILED" and (error_message is None):
+            error_message = meta.get("error") or meta.get("message") or "Pipeline execution encountered an unexpected error"
+            error_traceback = meta.get("traceback") or meta.get("error")
+            error_type = meta.get("error_type") or "PipelineExecutionError"
+            failed_at_state = ev.get("from_state")
 
     if events:
         timestamps = [ev.get("created_at") for ev in events if ev.get("created_at")]
@@ -145,40 +172,42 @@ async def get_pipeline_status(
     else:
         rows_per_sec = rows_written
 
-    mem = psutil.virtual_memory()
+    # Live system and process resource metrics
+    live_mem = psutil.virtual_memory()
+    live_cpu = psutil.cpu_percent(interval=None)
+    proc = psutil.Process()
+    live_proc_rss_mb = round(proc.memory_info().rss / (1024 * 1024), 2)
+    live_proc_cpu = proc.cpu_percent(interval=None)
+
+    is_finished = state_val in ("COMPLETED", "FAILED", "PAUSED")
 
     metrics = {
         "job_id": job_id,
         "rows_processed": rows_written,
         "chunks_processed": chunks_processed,
         "rows_per_sec": rows_per_sec,
-        "memory_percent": round(mem.percent, 1),
+        "memory_percent": completion_mem_pct if (is_finished and completion_mem_pct is not None) else round(live_mem.percent, 1),
+        "cpu_percent": completion_cpu_pct if (is_finished and completion_cpu_pct is not None) else live_cpu,
+        "process_rss_mb": completion_proc_rss_mb if (is_finished and completion_proc_rss_mb is not None) else live_proc_rss_mb,
+        "process_cpu_percent": completion_proc_cpu_pct if (is_finished and completion_proc_cpu_pct is not None) else live_proc_cpu,
+        "is_completion_snapshot": is_finished and (completion_mem_pct is not None),
         "chunk_size": 10000 if rows_written > 0 else 5000,
         "duration_sec": duration_sec,
         "timestamp": end_ts,
+        "failure_policy": failure_policy_summary,
     }
 
-    error_message: Optional[str] = None
-    error_traceback: Optional[str] = None
-    error_type: Optional[str] = None
-    failed_at_state: Optional[str] = None
+    dlq_records = await _store.get_dlq_records(job_id, include_replayed=True, limit=100)
 
-    for ev in events:
-        to_st = ev.get("to_state")
-        meta_raw = ev.get("metadata")
-        meta = json.loads(meta_raw) if isinstance(meta_raw, str) else (meta_raw if isinstance(meta_raw, dict) else {})
-        if to_st == "FAILED" or "error" in meta or "traceback" in meta:
-            error_message = meta.get("error") or meta.get("message") or "Pipeline execution encountered an unexpected error"
-            error_traceback = meta.get("traceback") or meta.get("error")
-            error_type = meta.get("error_type") or "PipelineExecutionError"
-            failed_at_state = ev.get("from_state")
-            break
-
-    dlq_records = await _store.get_dlq_records(job_id, include_replayed=True, limit=5)
-    if not error_message and dlq_records:
-        error_message = f"Encountered {len(dlq_records)} DLQ poison-pill isolation record(s): {dlq_records[0].get('error_trace')}"
-        error_traceback = dlq_records[0].get("error_trace")
-        error_type = "DataQualityViolation"
+    # Only show error if state is FAILED
+    error_payload = None
+    if state_val == "FAILED":
+        error_payload = {
+            "message": error_message or "Pipeline Execution Failure",
+            "traceback": error_traceback or error_message or "Execution Failure",
+            "error_type": error_type or "PipelineExecutionError",
+            "failed_at_state": failed_at_state or "EXTRACTING",
+        }
 
     return {
         "job_id": job_id,
@@ -186,13 +215,10 @@ async def get_pipeline_status(
         "latest_checkpoint": checkpoint,
         "metrics": metrics,
         "circuit_breakers": breakers,
-        "error": {
-            "message": error_message,
-            "traceback": error_traceback,
-            "error_type": error_type,
-            "failed_at_state": failed_at_state,
-        } if error_message or state_val == "FAILED" else None,
+        "dlq_count": len(dlq_records),
+        "error": error_payload,
     }
+
 
 
 @router.get("/{job_id}/dlq")
@@ -301,3 +327,28 @@ async def list_all_pipelines(
     return {"jobs": jobs, "job_list": job_details}
 
 
+@router.get("/{job_id}/events")
+async def get_pipeline_events(
+    job_id: str,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 200,
+    token: TokenPayload = Depends(require_permission(Permission.AUDIT_VIEW)),
+):
+    """
+    Returns structured pipeline event log for a specific job run.
+    Filterable by event_type (e.g. record_failure, chunk_complete, pipeline_start)
+    and severity (DEBUG, INFO, WARN, ERROR, CRITICAL).
+    """
+    events = await _store.get_pipeline_events(
+        job_id,
+        event_type=event_type,
+        severity=severity,
+        limit=limit,
+    )
+    return {
+        "job_id": job_id,
+        "total_events": len(events),
+        "filters": {"event_type": event_type, "severity": severity},
+        "events": events,
+    }

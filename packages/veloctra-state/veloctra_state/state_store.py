@@ -85,6 +85,19 @@ CREATE TABLE IF NOT EXISTS connections (
     tenant_id TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS pipeline_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'INFO',
+    chunk_index INTEGER,
+    row_index INTEGER,
+    message TEXT,
+    metadata TEXT,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -159,6 +172,30 @@ class BaseStateAdapter(ABC):
 
     @abstractmethod
     async def get_audit_events(self, job_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def log_pipeline_event(
+        self,
+        job_id: str,
+        tenant_id: str,
+        event_type: str,
+        severity: str = "INFO",
+        chunk_index: Optional[int] = None,
+        row_index: Optional[int] = None,
+        message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    async def get_pipeline_events(
+        self,
+        job_id: str,
+        event_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -392,6 +429,57 @@ class SQLiteStateAdapter(BaseStateAdapter):
                     pass
                 result.append(d)
             return result
+
+    async def log_pipeline_event(
+        self,
+        job_id: str,
+        tenant_id: str,
+        event_type: str,
+        severity: str = "INFO",
+        chunk_index: Optional[int] = None,
+        row_index: Optional[int] = None,
+        message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        conn = await self._ensure_conn()
+        now = time.time()
+        meta_str = json.dumps(sanitize_config(metadata or {}), default=str)
+        sql = """
+            INSERT INTO pipeline_events
+                (job_id, tenant_id, event_type, severity, chunk_index, row_index, message, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        await conn.execute(sql, (job_id, tenant_id, event_type, severity, chunk_index, row_index, message, meta_str, now))
+        await conn.commit()
+
+    async def get_pipeline_events(
+        self,
+        job_id: str,
+        event_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        conn = await self._ensure_conn()
+        sql = "SELECT * FROM pipeline_events WHERE job_id = ?"
+        params: list = [job_id]
+        if event_type:
+            sql += " AND event_type = ?"
+            params.append(event_type)
+        if severity:
+            sql += " AND severity = ?"
+            params.append(severity)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        async with conn.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["metadata"] = json.loads(d["metadata"])
+                except Exception:
+                    pass
+                result.append(d)
             return result
 
     async def save_pipeline_config(self, tenant_id: str, project_id: str, config: Dict[str, Any]) -> int:
@@ -773,6 +861,53 @@ class MongoStateAdapter(BaseStateAdapter):
             events.append(doc)
         return events
 
+    async def log_pipeline_event(
+        self,
+        job_id: str,
+        tenant_id: str,
+        event_type: str,
+        severity: str = "INFO",
+        chunk_index: Optional[int] = None,
+        row_index: Optional[int] = None,
+        message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        db = await self._ensure_db()
+        now = time.time()
+        doc = {
+            "job_id": job_id,
+            "tenant_id": tenant_id,
+            "event_type": event_type,
+            "severity": severity,
+            "chunk_index": chunk_index,
+            "row_index": row_index,
+            "message": message,
+            "metadata": sanitize_config(metadata or {}),
+            "created_at": now,
+        }
+        await db.pipeline_events.insert_one(doc)
+
+    async def get_pipeline_events(
+        self,
+        job_id: str,
+        event_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        db = await self._ensure_db()
+        filter_spec: Dict[str, Any] = {"job_id": job_id}
+        if event_type:
+            filter_spec["event_type"] = event_type
+        if severity:
+            filter_spec["severity"] = severity
+        cursor = db.pipeline_events.find(filter_spec).sort("created_at", -1).limit(limit)
+        events = []
+        async for doc in cursor:
+            doc["id"] = str(doc.get("_id"))
+            doc.pop("_id", None)
+            events.append(doc)
+        return events
+
     async def get_all_job_states(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
         db = await self._ensure_db()
         match_stage = {"tenant_id": tenant_id} if tenant_id and tenant_id not in ("*", "", None) else {}
@@ -996,6 +1131,12 @@ class StateStore:
 
     async def get_job_event_log(self, job_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         return await self._adapter.get_audit_events(job_id, limit)
+
+    async def log_pipeline_event(self, *args, **kwargs) -> None:
+        await self._adapter.log_pipeline_event(*args, **kwargs)
+
+    async def get_pipeline_events(self, *args, **kwargs) -> List[Dict[str, Any]]:
+        return await self._adapter.get_pipeline_events(*args, **kwargs)
 
     async def save_pipeline_config(self, tenant_id: str, project_id: str, config: Dict[str, Any]) -> int:
         return await self._adapter.save_pipeline_config(tenant_id, project_id, config)

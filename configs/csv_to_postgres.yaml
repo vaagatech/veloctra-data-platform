@@ -11,6 +11,15 @@ settings:
   dlq_enabled: true
   circuit_breaker_enabled: true
 
+# Error Handling & Failure Policy
+error_handling:
+  policy: threshold                # "continue" | "stop_on_failure" | "threshold"
+  max_failure_percent: 5.0         # Per-run: halt if > 5% of total rows fail
+  max_failure_count: 1000          # Per-run: OR halt if absolute DLQ count exceeds 1000
+  chunk_max_failure_percent: 25.0  # Per-chunk: halt if > 25% of a single chunk fails
+  chunk_max_failure_count: 200     # Per-chunk: OR halt if > 200 records fail in one chunk
+  log_level: detailed              # "minimal" | "standard" | "detailed"
+
 sources:
   - name: raw_claims_zip_file
     type: file

@@ -42,6 +42,149 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+class FailureThresholdExceeded(Exception):
+    """Raised when pipeline failure rate exceeds configured threshold."""
+    def __init__(self, message: str, stats: Dict[str, Any]):
+        self.stats = stats
+        super().__init__(message)
+
+
+class FailurePolicy:
+    """
+    Configurable failure handling policy for pipeline execution.
+
+    Policies:
+      - 'continue':        Never stop for record-level failures. All bad records go to DLQ.
+      - 'stop_on_failure':  Halt pipeline on the first record failure.
+      - 'threshold':        Continue until failure rate exceeds configured thresholds, then halt.
+
+    Thresholds are evaluated at two scopes:
+      - Per-chunk:  Resets after each chunk. Catches concentrated bursts of bad data.
+      - Per-run:    Cumulative across the entire pipeline execution.
+    """
+
+    def __init__(self, config: Dict[str, Any]):
+        self.policy = config.get("policy", "continue").lower()
+        self.log_level = config.get("log_level", "standard").lower()
+
+        # Per-run (cumulative) thresholds
+        self.max_failure_percent = float(config.get("max_failure_percent", 10.0))
+        self.max_failure_count = int(config.get("max_failure_count", 0))  # 0 = unlimited
+
+        # Per-chunk thresholds (optional — 0 means disabled)
+        self.chunk_max_failure_percent = float(config.get("chunk_max_failure_percent", 0))
+        self.chunk_max_failure_count = int(config.get("chunk_max_failure_count", 0))
+
+        # Per-run counters
+        self._total_processed: int = 0
+        self._total_failed: int = 0
+
+        # Per-chunk counters (reset each chunk)
+        self._chunk_processed: int = 0
+        self._chunk_failed: int = 0
+        self._current_chunk_idx: int = -1
+
+        self._halt_reason: Optional[str] = None
+
+    def begin_chunk(self, chunk_idx: int) -> None:
+        """Reset per-chunk counters at the start of a new chunk."""
+        self._chunk_processed = 0
+        self._chunk_failed = 0
+        self._current_chunk_idx = chunk_idx
+
+    def record_success(self, count: int = 1) -> None:
+        """Record successfully processed rows."""
+        self._total_processed += count
+        self._chunk_processed += count
+
+    def record_failure(self, count: int = 1) -> None:
+        """Record failed rows and evaluate thresholds."""
+        self._total_failed += count
+        self._total_processed += count
+        self._chunk_failed += count
+        self._chunk_processed += count
+        self._evaluate()
+
+    def _evaluate(self) -> None:
+        """Evaluate current state against the configured policy."""
+        if self.policy == "continue":
+            return
+
+        if self.policy == "stop_on_failure":
+            if self._total_failed > 0:
+                self._halt_reason = (
+                    f"Policy 'stop_on_failure': Pipeline halted after first record failure. "
+                    f"Total failed: {self._total_failed}"
+                )
+            return
+
+        if self.policy == "threshold":
+            # ── Per-chunk absolute count ──────────────────────────────────────
+            if self.chunk_max_failure_count > 0 and self._chunk_failed >= self.chunk_max_failure_count:
+                self._halt_reason = (
+                    f"Per-chunk failure count threshold breached in chunk {self._current_chunk_idx}: "
+                    f"{self._chunk_failed} failures >= chunk_max_failure_count ({self.chunk_max_failure_count})"
+                )
+                return
+
+            # ── Per-chunk percentage ──────────────────────────────────────────
+            if self.chunk_max_failure_percent > 0 and self._chunk_processed > 0:
+                chunk_pct = (self._chunk_failed / self._chunk_processed) * 100.0
+                if chunk_pct >= self.chunk_max_failure_percent:
+                    self._halt_reason = (
+                        f"Per-chunk failure rate threshold breached in chunk {self._current_chunk_idx}: "
+                        f"{chunk_pct:.2f}% >= chunk_max_failure_percent ({self.chunk_max_failure_percent}%). "
+                        f"Failed: {self._chunk_failed}/{self._chunk_processed}"
+                    )
+                    return
+
+            # ── Per-run absolute count ────────────────────────────────────────
+            if self.max_failure_count > 0 and self._total_failed >= self.max_failure_count:
+                self._halt_reason = (
+                    f"Cumulative failure count threshold breached: {self._total_failed} failures "
+                    f">= max_failure_count ({self.max_failure_count})"
+                )
+                return
+
+            # ── Per-run percentage ────────────────────────────────────────────
+            if self._total_processed > 0:
+                pct = (self._total_failed / self._total_processed) * 100.0
+                if pct >= self.max_failure_percent:
+                    self._halt_reason = (
+                        f"Cumulative failure rate threshold breached: {pct:.2f}% "
+                        f">= max_failure_percent ({self.max_failure_percent}%). "
+                        f"Failed: {self._total_failed}/{self._total_processed}"
+                    )
+
+    def should_halt(self) -> bool:
+        """Returns True if the pipeline should stop based on current failure state."""
+        return self._halt_reason is not None
+
+    @property
+    def halt_reason(self) -> Optional[str]:
+        return self._halt_reason
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Return a summary dict for telemetry / error payloads."""
+        run_pct = (self._total_failed / self._total_processed * 100.0) if self._total_processed > 0 else 0.0
+        chunk_pct = (self._chunk_failed / self._chunk_processed * 100.0) if self._chunk_processed > 0 else 0.0
+        return {
+            "policy": self.policy,
+            "total_processed": self._total_processed,
+            "total_failed": self._total_failed,
+            "failure_rate_pct": round(run_pct, 2),
+            "chunk_processed": self._chunk_processed,
+            "chunk_failed": self._chunk_failed,
+            "chunk_failure_rate_pct": round(chunk_pct, 2),
+            "max_failure_percent": self.max_failure_percent,
+            "max_failure_count": self.max_failure_count,
+            "chunk_max_failure_percent": self.chunk_max_failure_percent,
+            "chunk_max_failure_count": self.chunk_max_failure_count,
+            "halted": self.should_halt(),
+            "halt_reason": self._halt_reason,
+        }
+
+
 class MemoryGuard:
     """
     Intelligent Resource & Memory Guard.
@@ -223,6 +366,24 @@ class PipelineOrchestrator:
         try:
             total_rows = await self._run_pipeline()
             return total_rows
+        except FailureThresholdExceeded as fte:
+            import traceback
+            tb = traceback.format_exc()
+            logger.error("[Orchestrator:%s] Pipeline halted — failure threshold exceeded: %s", self.job_id, fte)
+            try:
+                await self.fsm.transition(self.job_id, PipelineState.FAILED, self.tenant_id, {
+                    "error": str(fte),
+                    "error_type": "FailureThresholdExceeded",
+                    "traceback": tb,
+                    "failure_policy": fte.stats,
+                })
+            except FSMError:
+                pass
+            await self.store.log_pipeline_event(
+                self.job_id, self.tenant_id, "threshold_breached", "CRITICAL",
+                message=str(fte), metadata=fte.stats,
+            )
+            raise
         except Exception as exc:
             import traceback
             tb = traceback.format_exc()
@@ -235,6 +396,10 @@ class PipelineOrchestrator:
                 })
             except FSMError:
                 pass
+            await self.store.log_pipeline_event(
+                self.job_id, self.tenant_id, "pipeline_failed", "ERROR",
+                message=str(exc), metadata={"error_type": exc.__class__.__name__, "traceback": tb},
+            )
             raise
         finally:
             elapsed = time.time() - start_time
@@ -242,6 +407,19 @@ class PipelineOrchestrator:
 
     async def _run_pipeline(self) -> None:
         await self.fsm.transition(self.job_id, PipelineState.VALIDATING, self.tenant_id)
+
+        # ── Failure Policy Configuration ─────────────────────────────────────
+        eh_cfg = self.config.get("error_handling", {})
+        failure_policy = FailurePolicy(eh_cfg)
+        logger.info(
+            "[Orchestrator:%s] Failure policy: %s (max_pct=%.1f%%, max_count=%d)",
+            self.job_id, failure_policy.policy, failure_policy.max_failure_percent, failure_policy.max_failure_count,
+        )
+        await self.store.log_pipeline_event(
+            self.job_id, self.tenant_id, "pipeline_start", "INFO",
+            message=f"Pipeline started with failure policy '{failure_policy.policy}'",
+            metadata={"failure_policy": failure_policy.get_summary(), "config_keys": list(self.config.keys())},
+        )
 
         # Support sources array or single source fallback
         raw_sources = self.config.get("sources")
@@ -255,6 +433,11 @@ class PipelineOrchestrator:
         start_chunk = await self.store.get_resume_chunk(self.job_id)
 
         await self.fsm.transition(self.job_id, PipelineState.EXTRACTING, self.tenant_id)
+        await self.store.log_pipeline_event(
+            self.job_id, self.tenant_id, "extraction_start", "INFO",
+            message=f"Starting extraction from {len(sources_list)} source(s)",
+            metadata={"sources": [s.get('name', 'unknown') for s in sources_list]},
+        )
 
         cipher_engine: Optional[CipherEngine] = None
         sec_cfg = self.config.get("security", {})
@@ -328,6 +511,7 @@ class PipelineOrchestrator:
                 chunk_idx += 1
                 continue
 
+            failure_policy.begin_chunk(chunk_idx)
             chunk_start = time.time()
 
             # ── Data Quality Contract Validation ────────────────────────────────
@@ -342,6 +526,14 @@ class PipelineOrchestrator:
                             f"DataQualityViolation: {', '.join(v['errors'])}",
                             chunk_idx,
                         )
+                        failure_policy.record_failure()
+                        await self.store.log_pipeline_event(
+                            self.job_id, self.tenant_id, "data_quality_violation", "WARN",
+                            chunk_index=chunk_idx,
+                            message=f"DataQualityViolation: {', '.join(v['errors'])}",
+                        )
+                    if failure_policy.should_halt():
+                        raise FailureThresholdExceeded(failure_policy.halt_reason, failure_policy.get_summary())
                     if dq_cfg.get("strict", False) and valid_batch.num_rows < raw_batch.num_rows:
                         raise SchemaValidationError(f"Batch {chunk_idx} failed strict data quality contracts ({len(violations)} violations)")
                 raw_batch = valid_batch
@@ -407,8 +599,14 @@ class PipelineOrchestrator:
                     "[Orchestrator:%s] Vectorised transform failed for chunk %d: %s. Falling back to row-by-row transform...",
                     self.job_id, chunk_idx, transform_exc,
                 )
+                await self.store.log_pipeline_event(
+                    self.job_id, self.tenant_id, "transform_fallback", "WARN",
+                    chunk_index=chunk_idx,
+                    message=f"Vectorised transform failed: {transform_exc}",
+                )
                 batch = await self._fallback_row_by_row_transform(
-                    raw_batch, rules_engine, enrichment_engine, transform_engine, cipher_engine, enc_cfg, custom_plugins, chunk_idx, script_engine
+                    raw_batch, rules_engine, enrichment_engine, transform_engine, cipher_engine, enc_cfg, custom_plugins, chunk_idx, script_engine,
+                    failure_policy=failure_policy,
                 )
 
             if batch.num_rows == 0:
@@ -429,13 +627,24 @@ class PipelineOrchestrator:
                     "[Orchestrator:%s] Batch loading failed for chunk %d: %s. Falling back to row-by-row load with DLQ isolation…",
                     self.job_id, chunk_idx, load_exc,
                 )
-                loaded_rows = await self._fallback_row_by_row_load(batch, dest_configs, partitioner, chunk_idx)
+                await self.store.log_pipeline_event(
+                    self.job_id, self.tenant_id, "load_fallback", "WARN",
+                    chunk_index=chunk_idx,
+                    message=f"Batch load failed: {load_exc}",
+                )
+                loaded_rows = await self._fallback_row_by_row_load(
+                    batch, dest_configs, partitioner, chunk_idx,
+                    failure_policy=failure_policy,
+                )
 
             if loaded_rows == 0:
                 chunk_idx += 1
                 del raw_batch
                 del batch
                 continue
+
+            # Track successful rows in failure policy
+            failure_policy.record_success(loaded_rows)
 
             # ── Checkpointing ────────────────────────────────────────────────────
             await self.fsm.transition(self.job_id, PipelineState.CHECKPOINTING, self.tenant_id, {"chunk_index": chunk_idx})
@@ -472,6 +681,13 @@ class PipelineOrchestrator:
                 "timestamp": time.time(),
             })
 
+            await self.store.log_pipeline_event(
+                self.job_id, self.tenant_id, "chunk_complete", "INFO" if failure_policy.log_level == "detailed" else "DEBUG",
+                chunk_index=chunk_idx,
+                message=f"Chunk {chunk_idx} completed: {loaded_rows} rows in {chunk_elapsed:.2f}s ({rate} rows/sec)",
+                metadata={"loaded_rows": loaded_rows, "rate": rate, "chunk_elapsed_ms": round(chunk_elapsed * 1000, 2)},
+            )
+
             # Clean memory dereferencing
             del raw_batch
             del batch
@@ -485,7 +701,27 @@ class PipelineOrchestrator:
         if partitioner:
             partitioner.flush()
 
-        await self.fsm.transition(self.job_id, PipelineState.COMPLETED, self.tenant_id, {"total_rows": total_rows})
+        final_mem = psutil.virtual_memory()
+        final_cpu = psutil.cpu_percent()
+        proc = psutil.Process()
+        proc_mem = round(proc.memory_info().rss / (1024 * 1024), 2)
+        proc_cpu = proc.cpu_percent(interval=None)
+
+        completion_metadata = {
+            "total_rows": total_rows,
+            "memory_percent": round(final_mem.percent, 1),
+            "cpu_percent": final_cpu,
+            "process_rss_mb": proc_mem,
+            "process_cpu_percent": proc_cpu,
+            **failure_policy.get_summary()
+        }
+
+        await self.fsm.transition(self.job_id, PipelineState.COMPLETED, self.tenant_id, completion_metadata)
+        await self.store.log_pipeline_event(
+            self.job_id, self.tenant_id, "pipeline_complete", "INFO",
+            message=f"Pipeline completed successfully: {total_rows} total rows",
+            metadata=completion_metadata,
+        )
         return total_rows
 
     async def _fallback_row_by_row_transform(
@@ -499,6 +735,7 @@ class PipelineOrchestrator:
         custom_plugins: Dict[str, Any],
         chunk_idx: int,
         script_engine: Optional[Any] = None,
+        failure_policy: Optional[FailurePolicy] = None,
     ) -> pa.RecordBatch:
         """
         Slow path: Iterates row-by-row when vectorised batch processing encounters corrupt records.
@@ -535,6 +772,14 @@ class PipelineOrchestrator:
                 try:
                     bad_row = mini_batch.to_pylist()[0]
                     dlq_id = await self.store.push_dlq(self.job_id, self.tenant_id, bad_row, str(e), chunk_idx)
+                    if failure_policy:
+                        failure_policy.record_failure()
+                    await self.store.log_pipeline_event(
+                        self.job_id, self.tenant_id, "record_failure", "ERROR",
+                        chunk_index=chunk_idx, row_index=i,
+                        message=f"Transform failed: {e}",
+                        metadata={"dlq_id": str(dlq_id), "error": str(e)},
+                    )
                     await self._broadcast_telemetry({
                         "event": "record_failure",
                         "job_id": self.job_id,
@@ -547,6 +792,8 @@ class PipelineOrchestrator:
                     })
                 except Exception as dlq_err:
                     logger.error("Failed to write to DLQ: %s", dlq_err)
+                if failure_policy and failure_policy.should_halt():
+                    raise FailureThresholdExceeded(failure_policy.halt_reason, failure_policy.get_summary())
                 continue
 
         if not successful_batches:
@@ -560,6 +807,7 @@ class PipelineOrchestrator:
         destinations: List[Dict[str, Any]],
         partitioner: Optional[FilePartitioner],
         chunk_idx: int,
+        failure_policy: Optional[FailurePolicy] = None,
     ) -> int:
         """
         Row-by-row fallback loader: Isolates single-row insert/upsert failures to DLQ
@@ -579,6 +827,14 @@ class PipelineOrchestrator:
                 )
                 try:
                     dlq_id = await self.store.push_dlq(self.job_id, self.tenant_id, row_dict, str(row_exc), chunk_idx)
+                    if failure_policy:
+                        failure_policy.record_failure()
+                    await self.store.log_pipeline_event(
+                        self.job_id, self.tenant_id, "record_failure", "ERROR",
+                        chunk_index=chunk_idx, row_index=i,
+                        message=f"Load failed: {row_exc}",
+                        metadata={"dlq_id": str(dlq_id), "error": str(row_exc)},
+                    )
                     await self._broadcast_telemetry({
                         "event": "record_failure",
                         "job_id": self.job_id,
@@ -591,6 +847,8 @@ class PipelineOrchestrator:
                     })
                 except Exception as dlq_err:
                     logger.error("Failed to write failed record to DLQ: %s", dlq_err)
+                if failure_policy and failure_policy.should_halt():
+                    raise FailureThresholdExceeded(failure_policy.halt_reason, failure_policy.get_summary())
 
         if successful_rows < batch.num_rows:
             try:

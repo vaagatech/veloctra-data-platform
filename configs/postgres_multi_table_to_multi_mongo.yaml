@@ -1,13 +1,13 @@
 # ==============================================================================
-# Veloctra Data Platform — Pipeline Configuration
-# Pipeline: Postgres to MongoDB Claims Migration
+# Veloctra Data Platform — Multi-Destination Fan-Out Pipeline
+# Architecture: PostgreSQL Tables -> Multiple Separate MongoDB Collections
 # ==============================================================================
 
-pipeline_id: postgres_to_mongo
+pipeline_id: postgres_multi_table_to_multi_mongo
 project_id: healthcare_prod_workspace
 tenant_id: healthcare_prod_workspace
-version: 2
-description: "Extracts claims from PostgreSQL, formats date columns (BeneBirthDt, ClaimFromDt, ClaimThruDt), renames fields to PascalCase schema contracts, and streams into MongoDB with Failure Threshold Governance."
+version: 1
+description: "Extracts healthcare data from PostgreSQL and fans out transformed records across multiple specialized MongoDB collections (patients collection and claims collection) simultaneously."
 
 settings:
   chunk_size: 5000
@@ -16,7 +16,7 @@ settings:
   dlq_enabled: true
   circuit_breaker_enabled: true
 
-# Error Handling & Failure Policy
+# Error Handling & Governance Policy
 error_handling:
   policy: threshold
   max_failure_percent: 2.0
@@ -33,7 +33,6 @@ sources:
     chunk_size: 5000
 
 transformations:
-  # 1. Date formatting
   - type: date_format
     column: bene_birth_dt
     target_column: BeneBirthDt
@@ -58,7 +57,6 @@ transformations:
     source_format: "%Y%m%d"
     target_format: "%Y-%m-%d"
 
-  # 2. Field Renaming & Normalization
   - type: rename_field
     field: desynpuf_id
     new_name: BeneficiaryId
@@ -84,40 +82,31 @@ transformations:
     new_name: PrimaryDiagnosisCode
 
   - type: rename_field
-    field: prf_physn_npi_1
-    new_name: AttendingPhysicianNPI
-
-  - type: rename_field
     field: medreimb_ip
-    new_name: InpatientReimbursementAmt
+    new_name: InpatientReimbursement
 
   - type: rename_field
     field: medreimb_op
-    new_name: OutpatientReimbursementAmt
+    new_name: OutpatientReimbursement
 
-  # 3. Selective Column Projection
-  - type: select_columns
-    columns:
-      - BeneficiaryId
-      - ClaimId
-      - BeneBirthDt
-      - BeneDeathDt
-      - GenderCode
-      - RaceCode
-      - StateCode
-      - ClaimFromDt
-      - ClaimThruDt
-      - PrimaryDiagnosisCode
-      - AttendingPhysicianNPI
-      - InpatientReimbursementAmt
-      - OutpatientReimbursementAmt
-
+# Target Destinations: Multiple MongoDB Collections Fan-Out
 destinations:
-  - name: mongo_claims_collection
+  # Destination 1: Beneficiary / Patient Demographics Collection
+  - name: mongo_patient_demographics
     type: nosql
     db_type: mongodb
     connection_string: "mongodb://localhost:27017"
     database: healthcare_dw
-    collection: claim_beneficiaries
+    collection: patient_demographics
+    upsert_key: BeneficiaryId
+    batch_size: 5000
+
+  # Destination 2: Clinical Claims Transaction Collection
+  - name: mongo_clinical_claims
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://localhost:27017"
+    database: healthcare_dw
+    collection: clinical_claims
     upsert_key: ClaimId
     batch_size: 5000

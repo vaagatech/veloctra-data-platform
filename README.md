@@ -98,9 +98,32 @@ graph TD
 - If a corrupt record is encountered, the orchestrator automatically sub-shards the batch row-by-row (`batch.slice(i, 1)`).
 - The poison pill is isolated to the MongoDB Dead Letter Queue (`dlq`) with full stack trace, while all valid records proceed to destination sinks.
 
-### 4. 📊 High-Contrast Observability Center & Real-Time Sparklines
-- Hardware gauges polling CPU utilization, Core counts, Total/Used/Available RAM (GB), Process RSS, OS thread counts, and GC generation statistics.
-- Interactive SVG Sparklines for live throughput (rows/sec) and chunk latency (ms).
+### 4. ⚖️ Configurable Dual-Scope Failure Policies (Run & Chunk Thresholds)
+- **Policy Modes**: `continue`, `stop_on_failure`, or `threshold`.
+- **Dual-Scope Threshold Governance**:
+  - **Per-Run Cumulative Safeguard**: Halt execution if total job failure rate exceeds `max_failure_percent` (e.g., 5%) or `max_failure_count`.
+  - **Per-Chunk Burst Protection**: Instantly catch sudden data corruption spikes if a single chunk's error rate exceeds `chunk_max_failure_percent` (e.g., 20%) or `chunk_max_failure_count`.
+- **Instant Circuit Breakers**: Critical `threshold_breached` events are written to the audit store and raised as `FailureThresholdExceeded` exceptions.
+
+### 5. ⚡ Vectorized Columnar Transforms & Date Formatting
+- **Zero-Copy PyArrow / Polars Execution**: Transforms millions of rows per second in C++ native memory without Python object overhead.
+- **Smart Date Formatters (`date_format`)**: Converts integer or string representations (e.g., `19230901` $\rightarrow$ `1923-09-01`) with null and boundary-safe parsing.
+- **Column Pruning & Projection (`select_columns` / `drop_columns`)**: Minimize bandwidth and storage by selecting and migrating only designated columns.
+- **Field-Level Type Casting & Renaming (`rename_field`, `type_cast`)**: Seamlessly map snake_case SQL attributes to camelCase or PascalCase NoSQL document schemas.
+
+### 6. 🌐 Multi-Table & Multi-Database Consolidations
+- **Relational to NoSQL Consolidation**: Extract from multiple relational tables across different schemas and merge into a single consolidated MongoDB document (e.g., `unified_patient_claims`).
+- **Targeted Multi-Collection Fanout**: Simultaneously route joined records to separate purpose-built collections (`patient_demographics`, `clinical_claims`).
+- **Unified End-to-End Lakehouse Pipelines**: Stream directly from compressed archive files (ZIP/GZ) through Arrow transformations and load into PostgreSQL and MongoDB in a single atomic pipeline.
+
+### 7. 📊 Scope-Aware Observability & Completion Snapshot Telemetry
+- **Active Streaming**: Live gauges polling CPU utilization, Total/Used RAM, Process RSS Heap, and WebSocket sparklines.
+- **Completion Resource Snapshots**: When viewing completed or historic runs, displays the exact CPU and Process RAM allocation at the moment of job completion.
+- **Structured Event Audit Trail**: Queryable `pipeline_events` log tracking state transitions, MemoryGuard throttles, and DLQ routing.
+
+### 8. 📥 Direct Pipeline Specification Import & Visual Studio
+- Direct drag-and-drop or raw YAML/JSON paste import for instant pipeline onboarding.
+- Interactive Light-Mode Studio with visual data modeler, schema discovery, field-level encryption toggles, and 1-click publishing.
 
 ---
 
