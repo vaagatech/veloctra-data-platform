@@ -1,0 +1,55 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: veloctra-shard-migrator-job
+  namespace: veloctra
+  labels:
+    app.kubernetes.io/name: veloctra-shard-migrator
+    app.kubernetes.io/part-of: veloctra-data-platform
+spec:
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    activeDeadlineSeconds: 7200
+    backoffLimit: 3
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: veloctra-shard-migrator
+      spec:
+        restartPolicy: OnFailure
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+        containers:
+          - name: shard-worker
+            image: veloctra-data-platform:latest
+            imagePullPolicy: IfNotPresent
+            command: ["python3", "-m", "veloctra_orchestrator.cli", "run-shard"]
+            envFrom:
+              - configMapRef:
+                  name: veloctra-config
+              - secretRef:
+                  name: veloctra-secrets
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "64Mi"
+              limits:
+                cpu: "1000m"
+                memory: "256Mi"
+  pollingInterval: 15
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  maxReplicaCount: 32
+  scalingStrategy:
+    strategy: "custom"
+  triggers:
+    # Trigger 1 Shard Worker Pod per Active Unprocessed Shard
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc:9090
+        metricName: veloctra_migration_total_shards
+        query: sum(veloctra_migration_total_shards)
+        threshold: "1"

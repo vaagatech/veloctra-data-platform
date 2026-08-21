@@ -338,7 +338,7 @@ class PipelineOrchestrator:
         self.fsm = fsm
         self.store = store
         self.broadcaster = broadcaster
-
+        self.pipeline_id = config.get("pipeline_id", job_id)
         self.memory_guard = MemoryGuard(
             max_ram_pct=settings.max_memory_percent,
             max_cpu_pct=getattr(settings, "max_cpu_percent", 75.0),
@@ -402,6 +402,8 @@ class PipelineOrchestrator:
             )
             raise
         finally:
+            from veloctra_orchestrator.sizing_engine import global_workload_registry
+            global_workload_registry.complete_workload(self.pipeline_id)
             elapsed = time.time() - start_time
             logger.info("[Orchestrator:%s] Pipeline run finished in %.2fs", self.job_id, elapsed)
 
@@ -687,6 +689,9 @@ class PipelineOrchestrator:
                 message=f"Chunk {chunk_idx} completed: {loaded_rows} rows in {chunk_elapsed:.2f}s ({rate} rows/sec)",
                 metadata={"loaded_rows": loaded_rows, "rate": rate, "chunk_elapsed_ms": round(chunk_elapsed * 1000, 2)},
             )
+
+            from veloctra_orchestrator.sizing_engine import global_workload_registry
+            global_workload_registry.record_progress(self.pipeline_id, loaded_rows)
 
             # Clean memory dereferencing
             del raw_batch

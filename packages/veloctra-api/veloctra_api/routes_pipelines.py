@@ -19,6 +19,7 @@ from veloctra_api.websocket import manager as ws_manager, telemetry_broadcaster
 from veloctra_security.rbac import Permission, Role, assert_tenant_access, require_permission, require_role, get_current_token
 from veloctra_security.security import TokenPayload
 from veloctra_orchestrator.orchestrator import PipelineOrchestrator
+from veloctra_orchestrator.sizing_engine import global_sizing_engine, global_workload_registry
 from veloctra_resilience.circuit_breaker import circuit_registry
 from veloctra_state.config_manager import ConfigManager, ConfigNotFoundError
 from veloctra_state.fsm import FSMError, PipelineFSM, PipelineState
@@ -46,6 +47,24 @@ class StartPipelineRequest(BaseModel):
     override_config: Optional[Dict[str, Any]] = None
 
 
+@router.post("/{pipeline_id}/estimate-size")
+async def estimate_pipeline_size(
+    pipeline_id: str,
+    token: TokenPayload = Depends(require_permission(Permission.PIPELINE_VIEW)),
+):
+    """Computes migration size, estimated volume, recommended shards, and KEDA target replica count."""
+    try:
+        config = await _config_mgr.load_raw(token.tenant_id, pipeline_id)
+    except ConfigNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Configuration for pipeline '{pipeline_id}' not found.",
+        )
+    last_wm = await _store.get_last_watermark(job_id="", pipeline_id=pipeline_id)
+    plan = await global_sizing_engine.plan_migration_scaling(config, active_watermark=last_wm)
+    return plan.to_dict()
+
+
 @router.post("/start")
 async def start_pipeline(
     body: StartPipelineRequest,
@@ -70,6 +89,11 @@ async def start_pipeline(
     except FSMError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # Calculate migration sizing and register workload demand for KEDA autoscaler
+    last_wm = await _store.get_last_watermark(job_id="", pipeline_id=body.pipeline_id)
+    plan = await global_sizing_engine.plan_migration_scaling(config, active_watermark=last_wm)
+    global_workload_registry.register_workload(plan)
+
     orchestrator = PipelineOrchestrator(
         job_id=job_id,
         tenant_id=token.tenant_id,
@@ -82,7 +106,17 @@ async def start_pipeline(
     _active_orchestrators[job_id] = orchestrator
 
     background_tasks.add_task(orchestrator.run)
-    return {"status": "started", "job_id": job_id, "pipeline_id": body.pipeline_id}
+    return {
+        "status": "started",
+        "job_id": job_id,
+        "pipeline_id": body.pipeline_id,
+        "sizing": {
+            "total_rows": plan.total_rows,
+            "estimated_payload_mb": round(plan.estimated_payload_mb, 2),
+            "recommended_replicas": plan.recommended_replicas,
+            "recommended_shards": plan.recommended_shards,
+        },
+    }
 
 
 @router.post("/{job_id}/pause")

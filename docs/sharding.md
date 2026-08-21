@@ -113,3 +113,22 @@ When exporting high-volume streams to data lakehouses (S3, GCS, or Local Filesys
 - **Bounded Partitions**: High-throughput streams are automatically split across numbered partition files (`part_00001.parquet`, `part_00002.parquet`).
 - **Trigger Conditions**: A new file is flushed whenever row count reaches `max_rows_per_file` (100,000 rows) or size reaches `max_file_size_mb` (100 MB).
 
+---
+
+## 7. Intelligent Migration Sizing & KEDA Elastic Autoscaling
+
+When migrating large datasets or processing high-volume delta backlogs, Veloctra uses an integrated **`MigrationSizingEngine`** and **KEDA (Kubernetes Event-Driven Autoscaling)** to intelligently scale worker pods up during large workloads and scale down to baseline when finished.
+
+### Scaling Mechanics:
+1. **Automated Volume Discovery**: Inspects table catalogs (`pg_class.reltuples`, `SELECT COUNT(*)`), MongoDB collection metadata (`count_documents`), and file headers.
+2. **Workload Sizing Formula**:
+   $$\text{TargetReplicas} = \operatorname{clamp}\left(\left\lceil \frac{\text{TotalPendingRows}}{\text{RowsPerWorker}} \right\rceil, \text{MinReplicas}, \text{MaxReplicas}\right)$$
+3. **Prometheus Metrics Emission**:
+   - `veloctra_migration_workload_demand_replicas`: Target pod replica count for KEDA.
+   - `veloctra_migration_pending_rows`: Total pending rows remaining in active pipelines.
+   - `veloctra_migration_total_shards`: Total active shard partitions.
+4. **Elastic Lifecycle**:
+   - **Scale-Up**: KEDA rapidly scales worker pods (e.g. 1 $\rightarrow$ 8 pods) within 15 seconds.
+   - **Scale-Down**: As shards finish and pending rows drain to 0, KEDA observes the 5-minute cooldown stabilization window and scales pods back down to baseline.
+
+

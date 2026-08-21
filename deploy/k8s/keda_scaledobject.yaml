@@ -1,0 +1,57 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: veloctra-engine-autoscaler
+  namespace: veloctra
+  labels:
+    app.kubernetes.io/name: veloctra-engine
+    app.kubernetes.io/part-of: veloctra-data-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: veloctra-engine
+  pollingInterval: 15       # Scrape interval in seconds
+  cooldownPeriod: 300       # 5-minute stabilization cooldown before scaling down
+  minReplicaCount: 1        # Baseline pods (can be 0 for scale-to-zero)
+  maxReplicaCount: 16       # Maximum elastic horizontal scale
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+            - type: Pods
+              value: 4
+              periodSeconds: 15
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 60
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+          selectPolicy: Min
+  triggers:
+    # Trigger 1: Sizing Engine Recommended Replicas (Direct Target)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc:9090
+        metricName: veloctra_migration_workload_demand_replicas
+        query: sum(veloctra_migration_workload_demand_replicas)
+        threshold: "1"  # 1 pod per recommended workload demand unit
+
+    # Trigger 2: Migration Pending Rows Backlog (1 pod per 100,000 pending rows)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc:9090
+        metricName: veloctra_migration_pending_rows
+        query: sum(veloctra_migration_pending_rows)
+        threshold: "100000"  # Scale 1 pod per 100,000 pending migration rows

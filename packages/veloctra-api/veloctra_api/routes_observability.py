@@ -28,6 +28,7 @@ from veloctra_security.security import TokenPayload
 from veloctra_state.state_store import StateStore
 
 from fastapi.responses import PlainTextResponse
+from veloctra_orchestrator.sizing_engine import global_workload_registry
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -36,11 +37,12 @@ router = APIRouter(tags=["Observability & Analytics"])
 
 @router.get("/metrics", response_class=PlainTextResponse)
 async def get_prometheus_metrics():
-    """Exposes Prometheus scrapeable metrics for Kubernetes and monitoring engines."""
+    """Exposes Prometheus scrapeable metrics for Kubernetes, KEDA, and monitoring engines."""
     mem = psutil.virtual_memory()
     cpu = psutil.cpu_percent(interval=None)
     proc = psutil.Process()
     proc_mem = proc.memory_info()
+    workload_stats = global_workload_registry.get_metrics_snapshot()
 
     lines = [
         "# HELP veloctra_system_memory_percent Current system memory usage percentage",
@@ -55,6 +57,18 @@ async def get_prometheus_metrics():
         "# HELP veloctra_process_threads Number of active OS threads in Veloctra process",
         "# TYPE veloctra_process_threads gauge",
         f"veloctra_process_threads {proc.num_threads()}",
+        "# HELP veloctra_migration_pending_rows Total pending rows across active migration workloads",
+        "# TYPE veloctra_migration_pending_rows gauge",
+        f"veloctra_migration_pending_rows {workload_stats['total_pending_rows']}",
+        "# HELP veloctra_migration_workload_demand_replicas Target pod replica count recommended for KEDA autoscaler",
+        "# TYPE veloctra_migration_workload_demand_replicas gauge",
+        f"veloctra_migration_workload_demand_replicas {workload_stats['workload_demand_replicas']}",
+        "# HELP veloctra_migration_total_shards Total active shards across executing migration pipelines",
+        "# TYPE veloctra_migration_total_shards gauge",
+        f"veloctra_migration_total_shards {workload_stats['total_shards']}",
+        "# HELP veloctra_migration_active_jobs Number of active migration jobs",
+        "# TYPE veloctra_migration_active_jobs gauge",
+        f"veloctra_migration_active_jobs {workload_stats['active_workloads']}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -105,6 +119,7 @@ async def get_live_metrics(
             "threshold": gc.get_threshold(),
         },
         "circuit_breakers": circuit_registry.all_statuses(),
+        "keda_workload": global_workload_registry.get_metrics_snapshot(),
     }
 
 
