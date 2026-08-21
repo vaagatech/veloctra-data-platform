@@ -111,3 +111,74 @@ destinations:
     max_rows_per_file: 50000
     max_file_size_mb: 50
 ```
+
+---
+
+## 4. Change Data Capture (CDC) High-Watermark Stream
+
+Performs incremental delta sync from PostgreSQL to MongoDB with automatic watermark tracking:
+
+```yaml
+pipeline_id: pg_to_mongo_cdc_claims
+project_id: healthcare_workspace
+tenant_id: healthcare_workspace
+
+settings:
+  chunk_size: 5000
+  dlq_enabled: true
+
+sources:
+  - name: postgres_raw_claims
+    type: database
+    connection_string: "postgresql+asyncpg://user:secret@postgres.internal:5432/claims_db"
+    query: "SELECT id, beneficiary_id, amount, updated_at FROM claims"
+    delta:
+      watermark_column: "updated_at"
+      watermark_type: "timestamp"
+      initial_watermark: "2026-01-01T00:00:00"
+
+destinations:
+  - name: mongo_claims_live
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb://mongo.internal:27017"
+    database: "analytics_dw"
+    collection: "claims"
+    upsert_key: "id"
+```
+
+---
+
+## 5. KEDA-Enabled Elastic Horizontal Autoscaling Pipeline
+
+Scales worker pod count dynamically based on the discovered migration backlog size:
+
+```yaml
+pipeline_id: large_enterprise_migration
+project_id: data_migration_prod
+tenant_id: data_migration_prod
+
+settings:
+  chunk_size: 10000
+  keda:
+    enabled: true
+    rows_per_worker: 100000     # 1 pod provisioned per 100,000 pending rows
+    min_replicas: 1             # Baseline worker count (0 for scale-to-zero)
+    max_replicas: 16            # Peak capacity during high migration volume
+
+sources:
+  - name: legacy_oracle_or_sql
+    type: database
+    connection_string: "postgresql+asyncpg://app:secret@db.prod:5432/legacy_dw"
+    query: "SELECT * FROM enterprise_transactions"
+
+destinations:
+  - name: mongodb_atlas_cluster
+    type: nosql
+    db_type: mongodb
+    connection_string: "mongodb+srv://admin:secret@atlas.mongodb.net"
+    database: "enterprise_dw"
+    collection: "transactions"
+    upsert_key: "txn_id"
+```
+

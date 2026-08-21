@@ -58,3 +58,20 @@ Traditional data engineering stacks—built on Apache Spark, Airflow workers, or
 - **Veloctra Solution**:
   - 5-Role Role-Based Access Control (RBAC): `SuperAdmin`, `ProjectAdmin`, `Developer`, `Operator`, `Viewer`.
   - Cryptographically isolated tenant AAD tokens and MongoDB collections.
+
+---
+
+### 5. Zero-Timestamp Legacy Table Synchronization & CDC
+- **Challenge**: Many legacy production relational tables lack `updated_at` timestamps or version columns, yet need continuous delta synchronization without costly full table dumps.
+- **Veloctra Solution**:
+  - `ChecksumDiffCDC` maintains persistent SHA-256 state snapshots over non-key attributes to detect `INSERT`, `UPDATE`, and `DELETE` operations on read-only legacy replicas without schema alterations.
+  - Native MongoDB change streams capture real-time oplog events with resume tokens.
+
+---
+
+### 6. Cloud-Bursting Elastic Autoscaling with KEDA
+- **Challenge**: Occasional massive data migrations (100M+ rows) require massive temporary parallel compute, but running large idle worker fleets 24/7 wastes significant cloud budget.
+- **Veloctra Solution**:
+  - `MigrationSizingEngine` discovers migration size from database catalogs and emits dynamic Prometheus workload metrics (`veloctra_migration_workload_demand_replicas`).
+  - KEDA automatically provisions worker pods (1 &rarr; 16 pods) during high volume and scales down to baseline (or 0) after a 5-minute cooldown stabilization window, slashing cloud compute costs by up to 80%.
+

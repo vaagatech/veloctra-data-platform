@@ -1569,6 +1569,59 @@ destinations:
     collection: claims_stream
     upsert_key: ClaimId
     batch_size: 5000</code></pre>
+
+      <!-- INTELLIGENT MIGRATION SIZING & KEDA AUTOSCALING -->
+      <h2 id="keda" style="margin-top: 48px;">⚡ 5. Intelligent Migration Sizing & KEDA Elastic Autoscaling</h2>
+      <p>Veloctra combines in-pod micro-level protection with Kubernetes cluster macro-level elasticity through its integrated <strong>Migration Sizing Engine</strong> and <strong>KEDA (Kubernetes Event-Driven Autoscaling)</strong> controller:</p>
+
+      <div class="card-grid" style="margin-bottom: 24px;">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(79, 70, 229, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">🔍</div>
+            <h3 style="color: #4f46e5; margin: 0;">1. Source Volume Discovery</h3>
+          </div>
+          <p>Scans SQL table catalogs (<code>pg_class.reltuples</code>, <code>SELECT COUNT(*)</code>), MongoDB collection metadata (<code>count_documents</code>), and file metadata to calculate exact pending rows and payload size.</p>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(2, 132, 199, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">📊</div>
+            <h3 style="color: #0284c7; margin: 0;">2. Prometheus Metric Pipeline</h3>
+          </div>
+          <p>Emits real-time gauges: <code>veloctra_migration_workload_demand_replicas</code> and <code>veloctra_migration_pending_rows</code> on <code>/metrics</code> for KEDA to scrape with zero broker dependencies.</p>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(5, 150, 105, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">🚀</div>
+            <h3 style="color: #059669; margin: 0;">3. Two-Tier Scale Up & Down</h3>
+          </div>
+          <p><code>MemoryGuard</code> prevents OOM crashes within &lt; 1ms, while KEDA horizontally scales worker pods (1 &rarr; 16) and smoothly drains them upon completion with a 5-minute cooldown.</p>
+        </div>
+      </div>
+
+      <pre><code># Production KEDA ScaledObject Manifest (deploy/k8s/keda_scaledobject.yaml)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: veloctra-engine-autoscaler
+  namespace: veloctra
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: veloctra-engine
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 16
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc:9090
+        metricName: veloctra_migration_workload_demand_replicas
+        query: sum(veloctra_migration_workload_demand_replicas)
+        threshold: "1"</code></pre>
     </main>
   </div>
 </body>

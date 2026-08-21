@@ -239,4 +239,18 @@ destinations:
     upsert_key: claim_id
 ```
 
+---
+
+## ⚡ 8. Intelligent Migration Sizing & KEDA Elastic Autoscaler
+
+Veloctra combines in-pod micro-level protection with Kubernetes cluster macro-level elasticity through its integrated **`MigrationSizingEngine`** and **KEDA (Kubernetes Event-Driven Autoscaling)** controller.
+
+### Two-Tier Scaling Architecture:
+1. **In-Pod Micro-Level Protection (`MemoryGuard`)**: Instantaneous in-process defense (< 1ms). Dynamically throttles chunk sizes (10,000 $\rightarrow$ 50 $\rightarrow$ 1 row), micro-sleeps, and runs `gc.collect()` to prevent `OOMKilled` (Exit 137) during sudden large payload bursts.
+2. **Cluster Macro-Level Elasticity (`KEDA ScaledObject`)**: Horizontal fleet autoscaling (1 $\rightarrow$ 16 pods) driven by real-time Prometheus gauges (`veloctra_migration_workload_demand_replicas`, `veloctra_migration_pending_rows`) with a 5-minute stabilization cooldown.
+
+### Key Workload Sizing Formula:
+$$\text{TargetReplicas} = \operatorname{clamp}\left(\left\lceil \frac{\text{TotalPendingRows}}{\text{RowsPerWorker}} \right\rceil, \text{MinReplicas}, \text{MaxReplicas}\right)$$
+
+
 

@@ -29,12 +29,23 @@ TOKEN=$(curl -s -X POST http://localhost:8008/auth/login \
   -d '{"username": "admin", "password": "changeme"}' | jq -r .access_token)
 ```
 
+### Estimate Migration Size & KEDA Shard Replicas
+```bash
+curl -s -X POST http://localhost:8008/pipelines/csv_to_postgres/estimate-size \
+  -H "Authorization: Bearer $TOKEN" | jq .
+```
+
 ### Start a Pipeline
 ```bash
 curl -s -X POST http://localhost:8008/pipelines/start \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"pipeline_id": "csv_to_postgres"}' | jq .
+```
+
+### Scrape Prometheus Metrics (Kubernetes / KEDA)
+```bash
+curl -s http://localhost:8008/metrics
 ```
 
 ### Query Live Telemetry

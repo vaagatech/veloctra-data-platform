@@ -334,6 +334,16 @@ PORT=8008 ./start.sh
         <li><strong>Observability Center</strong>: <a href="http://localhost:8008/observability">http://localhost:8008/observability</a></li>
         <li><strong>Interactive API Docs</strong>: <a href="http://localhost:8008/docs">http://localhost:8008/docs</a></li>
       </ul>
+
+      <h2>5. Kubernetes & KEDA Elastic Autoscaler Deployment</h2>
+      <pre><code># 1. Deploy base engine and Prometheus monitoring
+kubectl apply -f deploy/k8s/deployment.yaml
+
+# 2. Deploy KEDA ScaledObject for automated migration elasticity
+kubectl apply -f deploy/k8s/keda_scaledobject.yaml
+
+# 3. Optional: Deploy ephemeral batch shard executor ScaledJob
+kubectl apply -f deploy/k8s/keda_scaledjob.yaml</code></pre>
     </main>
   </div>
 </body>

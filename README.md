@@ -16,7 +16,7 @@
   <b>High-throughput, memory-governed ETL/ELT platform designed for mission-critical SQL, NoSQL, and Lakehouse pipelines with zero data loss.</b>
 </p>
 
-[🌐 Live Documentation](https://vaagatech.github.io/veloctra-data-platform/) • [🚀 Quickstart](#-quickstart) • [🏛️ Architecture](#-system-architecture) • [💡 Why Veloctra?](#-why-veloctra) • [📦 Packages](#-monorepo-structure)
+[🌐 Live Documentation](https://vaagatech.github.io/veloctra-data-platform/) • [🔄 Change Data Capture (CDC)](docs/cdc.html) • [📈 Sharding & KEDA Autoscaling](docs/sharding.html) • [🚀 Quickstart](#-quickstart) • [🏛️ Architecture](#-system-architecture) • [💡 Why Veloctra?](#-why-veloctra) • [📦 Packages](#-monorepo-structure)
 
 </div>
 
@@ -121,7 +121,20 @@ graph TD
 - **Completion Resource Snapshots**: When viewing completed or historic runs, displays the exact CPU and Process RAM allocation at the moment of job completion.
 - **Structured Event Audit Trail**: Queryable `pipeline_events` log tracking state transitions, MemoryGuard throttles, and DLQ routing.
 
-### 8. 📥 Direct Pipeline Specification Import & Visual Studio
+### 8. 🔄 Change Data Capture (CDC) & Zero-Timestamp Checksum Diff
+- **High-Watermark Delta Sync**: Incremental sync for SQL/NoSQL tables with timestamp or auto-incrementing watermark columns.
+- **Universal Checksum-Diff CDC Engine (`ChecksumDiffCDC`)**: Native SHA-256 state snapshot hashing to detect INSERT, UPDATE, and DELETE operations on legacy tables lacking timestamp or version columns.
+- **MongoDB Change Streams (`MongoChangeStreamCDC`)**: Real-time oplog/WAL streaming with resume tokens.
+- **Vectorized Split Loading**: Routes `_cdc_op == 'DELETE'` to `bulk_delete` and inserts/updates to `bulk_upsert`.
+
+### 9. 📈 Intelligent Migration Sizing & KEDA Elastic Autoscaling
+- **Automated Sizing Discovery**: Scans SQL catalogs (`pg_class.reltuples`, `SELECT COUNT(*)`), MongoDB collection stats (`count_documents`), and file headers to compute exact pending workload volume.
+- **Mathematical Sizing & Target Replicas**:
+  $$\text{TargetReplicas} = \operatorname{clamp}\left(\left\lceil \frac{\text{TotalPendingRows}}{\text{RowsPerWorker}} \right\rceil, \text{MinReplicas}, \text{MaxReplicas}\right)$$
+- **2-Tier Scaling Synergy**: `MemoryGuard` provides sub-millisecond in-pod RAM protection while KEDA handles macro-level horizontal pod autoscaling (1 &rarr; 16 pods) with Prometheus metric scrapers and a 5-minute stabilization cooldown.
+- **Production KEDA CRDs**: Ready-to-deploy [`keda_scaledobject.yaml`](deploy/k8s/keda_scaledobject.yaml) and [`keda_scaledjob.yaml`](deploy/k8s/keda_scaledjob.yaml) manifests.
+
+### 10. 📥 Direct Pipeline Specification Import & Visual Studio
 - Direct drag-and-drop or raw YAML/JSON paste import for instant pipeline onboarding.
 - Interactive Light-Mode Studio with visual data modeler, schema discovery, field-level encryption toggles, and 1-click publishing.
 

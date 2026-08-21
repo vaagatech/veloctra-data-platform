@@ -120,3 +120,21 @@ To run Veloctra inside a containerized environment:
 ```bash
 docker-compose up -d --build
 ```
+
+---
+
+## 6. Kubernetes & KEDA Autoscaler Deployment
+
+To deploy Veloctra with automated horizontal elasticity on Kubernetes:
+
+```bash
+# 1. Apply base deployment, service, and Prometheus scrape config
+kubectl apply -f deploy/k8s/deployment.yaml
+
+# 2. Deploy KEDA ScaledObject for automated migration elasticity
+kubectl apply -f deploy/k8s/keda_scaledobject.yaml
+
+# 3. Optional: Deploy ephemeral batch shard executor ScaledJob
+kubectl apply -f deploy/k8s/keda_scaledjob.yaml
+```
+
