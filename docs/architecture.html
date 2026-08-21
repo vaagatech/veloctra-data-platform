@@ -718,6 +718,7 @@
     <ul class="nav-links">
       <li><a href="index.html">Overview</a></li>
       <li><a href="architecture.html" class="active">Architecture</a></li>
+      <li><a href="cdc.html">CDC</a></li>
       <li><a href="sharding.html">Sharding</a></li>
       <li><a href="setup.html">Quickstart</a></li>
       <li><a href="usage.html">Studio & API</a></li>
@@ -735,8 +736,8 @@
     <aside class="sidebar">
       <div class="menu-group">
         <div class="menu-title">Platform Guides</div>
-        <a class="menu-item" href="index.html">🌟 Why Veloctra?</a>
         <a class="menu-item active" href="architecture.html">🏛️ System Architecture</a>
+        <a class="menu-item" href="cdc.html" style="padding-left: 28px; font-size: 13px;">🔄 Change Data Capture (CDC)</a>
         <a class="menu-item" href="sharding.html">⚡ Process Sharding</a>
         <a class="menu-item" href="use-cases.html">💼 Enterprise Use Cases</a>
       </div>
@@ -1381,6 +1382,193 @@
           <p>Author logic with your choice of framework: <code>def transform(batch: pa.RecordBatch)</code>, <code>def transform_df(df: pd.DataFrame)</code>, or <code>def transform_polars(df: pl.DataFrame)</code>.</p>
         </div>
       </div>
+
+      <!-- UNIVERSAL CHANGE DATA CAPTURE (CDC) ENGINE -->
+      <h2 id="cdc">🔄 Universal Change Data Capture (CDC) Architecture & Engine</h2>
+      <p>The Veloctra platform delivers an enterprise-grade Change Data Capture (CDC) framework that <strong>both implements its own vectorized delta/hash-diff engines in-app</strong> and <strong>integrates with external real-time log streams</strong>. It enables zero-data-loss synchronization, sub-second delta streaming, and legacy database replication without demanding heavy external agents such as Debezium or Kafka Connect.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(79, 70, 229, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">🌊</div>
+            <h3 style="color: #4f46e5; margin: 0;">1. High-Watermark Delta Sync</h3>
+          </div>
+          <p>For tables with timestamp columns (e.g. <code>updated_at</code>, <code>created_at</code>) or monotonically increasing IDs. Injects dynamic SQL/NoSQL filter clauses at extraction time and updates checkpoints automatically.</p>
+          <div style="margin-top: 10px;">
+            <span class="card-tag">Timestamp / Sequence</span>
+            <span class="card-tag">Atomic StateStore Checkpoints</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(2, 132, 199, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">🔍</div>
+            <h3 style="color: #0284c7; margin: 0;">2. Checksum Hash-Diff CDC</h3>
+          </div>
+          <p>Built for legacy databases with <strong>zero timestamp columns, no triggers, and no replication log access</strong>. Maintains persistent SHA-256 row-level hash states to detect <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code> events.</p>
+          <div style="margin-top: 10px;">
+            <span class="card-tag">Zero-Column / No-Timestamp</span>
+            <span class="card-tag">SHA-256 State Map</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(5, 150, 105, 0.1); display: flex; align-items: center; justify-content: center; font-size: 16px;">📜</div>
+            <h3 style="color: #059669; margin: 0;">3. Oplog Change Stream CDC</h3>
+          </div>
+          <p>Real-time log-based CDC listening to database change feeds (e.g. MongoDB <code>coll.watch()</code> with <code>resume_after</code> tokens, Redis Streams, or Kafka log topics) converted to standardized PyArrow batches.</p>
+          <div style="margin-top: 10px;">
+            <span class="card-tag">MongoDB Oplog</span>
+            <span class="card-tag">Resume Tokens</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CDC PIPELINE VISUALIZER -->
+      <div class="crypto-visual" style="margin-top: 28px;">
+        <div style="font-weight: 800; font-size: 16px; color: #0f172a; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+          <span>⚡ CDC Stream Pipeline & PyArrow Vector Reconciliation</span>
+        </div>
+        <div style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
+          How change events are extracted, standardized into unified PyArrow vector batches, split via SIMD operations, and reconciled into target databases:
+        </div>
+
+        <div class="crypto-pipeline">
+          <div class="crypto-node">
+            <div class="crypto-icon icon-indigo">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 1 • Extraction & Delta Detection</div>
+              <div class="crypto-heading">Source Change Capture (Watermark, Checksum Hash-Diff, or Oplog Stream)</div>
+              <div class="crypto-sub">Extracts deltas using either dynamic WHERE watermark clauses (<code>WHERE updated_at &gt; 'last_wm'</code>), SHA-256 hash comparison across non-key fields, or MongoDB change streams.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-cyan">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 2 • Standardized CDC Contract</div>
+              <div class="crypto-heading">Unified Vector Metadata Injection (<span class="crypto-code">_cdc_op</span>, <span class="crypto-code">_cdc_ts</span>, <span class="crypto-code">_cdc_key</span>)</div>
+              <div class="crypto-sub">Every change batch is normalized into an Apache Arrow <code>RecordBatch</code> with operation tags: <code>INSERT</code>, <code>UPDATE</code>, or <code>DELETE</code>, alongside epoch timestamps and compound primary key values.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-emerald">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 3 • SIMD Vector Split & Target Reconciliation</div>
+              <div class="crypto-heading">Zero-Copy Filter & Dual-Channel Destination Dispatch</div>
+              <div class="crypto-sub">
+                <code>pyarrow.compute.equal(_cdc_op, "DELETE")</code> splits the batch into:
+                <br/>• <strong>Deletes:</strong> Targeted <code>SQLConnector.bulk_delete()</code> using primary/match keys.
+                <br/>• <strong>Upserts:</strong> High-throughput <code>bulk_upsert()</code> (<code>ON CONFLICT DO UPDATE</code>) or MongoDB <code>ReplaceOne(upsert=True)</code>.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TECHNICAL COMPARISON TABLE -->
+      <h3 style="margin-top: 32px; margin-bottom: 12px;">📊 CDC Mode Capabilities & Trade-Offs</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>CDC Mode</th>
+              <th>Supported Databases</th>
+              <th>Schema Changes Required?</th>
+              <th>Deletion Handling</th>
+              <th>Throughput Profile</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>High-Watermark Delta Sync</strong></td>
+              <td>PostgreSQL, MySQL, SQLite, MongoDB, Cassandra, DynamoDB</td>
+              <td>Requires timestamp or sequential integer column (e.g. <code>updated_at</code>, <code>id</code>)</td>
+              <td>Soft deletes only (e.g. <code>is_deleted = true</code>)</td>
+              <td>⚡ Ultra-Fast (120,000+ rows/sec)</td>
+            </tr>
+            <tr>
+              <td><strong>Checksum Hash-Diff CDC</strong></td>
+              <td>Any SQL / NoSQL / Flat File / CSV source without timestamps</td>
+              <td>Zero modifications. Works on legacy & read-only replicas</td>
+              <td>Full hard-delete capture (missing key detection)</td>
+              <td>⚡ High (50,000+ rows/sec with SHA-256 SIMD)</td>
+            </tr>
+            <tr>
+              <td><strong>MongoDB Change Streams / Oplog</strong></td>
+              <td>MongoDB Replica Sets / Atlas, Redis Streams, Kafka</td>
+              <td>None (Native database binlog / oplog stream)</td>
+              <td>Full hard & soft delete capture via change event tags</td>
+              <td>⚡ Real-time continuous streaming (&lt; 50ms latency)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- REPLAY POLICIES & CONFLICT MANAGEMENT -->
+      <h3 style="margin-top: 32px; margin-bottom: 12px;">⚙️ Offset Governance & Conflict Policies (UI & API)</h3>
+      <p>When updating an active CDC streaming pipeline, Veloctra enforces atomic checkpoint safety to avoid silent duplication or skipped records:</p>
+
+      <div class="branch-box">
+        <div class="branch-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+          <span>CDC Offset Update Strategies</span>
+        </div>
+        <div class="branch-grid">
+          <div class="branch-item">
+            <strong>replay_from_start</strong>: Clears stored high-watermarks and state hash tables, executing a fresh initial backfill before seamlessly transitioning into continuous delta mode.
+          </div>
+          <div class="branch-item">
+            <strong>process_new_only</strong>: Preserves existing watermark checkpoints, ensuring zero duplicate processing and picking up strictly newly generated changes from the exact cursor point.
+          </div>
+        </div>
+      </div>
+
+      <!-- EXAMPLE CDC CONFIGURATION -->
+      <h3 style="margin-top: 32px; margin-bottom: 12px;">🧪 Example: Hybrid High-Watermark CDC Pipeline YAML</h3>
+      <pre><code># Veloctra CDC Streaming Configuration
+pipeline_id: postgres_to_mongo_cdc
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
+version: 2
+
+settings:
+  chunk_size: 5000
+  max_memory_percent: 75.0
+  dlq_enabled: true
+
+sources:
+  - name: pg_healthcare_claims
+    type: database
+    connection_string: "enc:v1:..."
+    query: "SELECT * FROM raw_claims"
+    chunk_size: 5000
+    delta:
+      watermark_column: updated_at
+      watermark_type: timestamp
+      initial_watermark: "2026-01-01T00:00:00"
+
+destinations:
+  - name: mongo_claims_collection
+    type: nosql
+    db_type: mongodb
+    connection_string: "enc:v1:..."
+    database: healthcare_dw
+    collection: claims_stream
+    upsert_key: ClaimId
+    batch_size: 5000</code></pre>
     </main>
   </div>
 </body>

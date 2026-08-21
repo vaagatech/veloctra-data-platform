@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Change Data Capture (CDC) — Veloctra Data Platform</title>
+  <meta name="description" content="Universal Change Data Capture (CDC) architecture, ChecksumDiffCDC zero-timestamp diffing, MongoDB change streams, and PyArrow vector reconciliation in Veloctra Data Platform." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="alternate icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --surface3: #e2e8f0;
+      --border: #e2e8f0;
+      --border-hover: #cbd5e1;
+      --accent: #4f46e5;
+      --accent-dark: #4338ca;
+      --accent-light: #eef2ff;
+      --accent-glow: rgba(79, 70, 229, 0.15);
+      --cyan: #0284c7;
+      --emerald: #059669;
+      --text-heading: #0f172a;
+      --text-body: #334155;
+      --text-muted: #64748b;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .bg-mesh {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 5%, rgba(79, 70, 229, 0.06), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 90%, rgba(2, 132, 199, 0.05), transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 68px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 36px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text-heading);
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #fff;
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover, .nav-links a.active { color: var(--accent); font-weight: 600; }
+
+    .github-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-heading) !important;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: calc(100vh - 68px);
+      position: relative;
+      z-index: 1;
+    }
+
+    .sidebar {
+      padding: 32px 24px;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 68px;
+      height: calc(100vh - 68px);
+      overflow-y: auto;
+      background: var(--bg);
+    }
+
+    .menu-group { margin-bottom: 28px; }
+    .menu-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-left: 12px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: var(--text-body);
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+    }
+
+    .menu-item:hover {
+      background: var(--surface2);
+      color: var(--accent);
+    }
+
+    .menu-item.active {
+      background: var(--accent-light);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .menu-sub-item {
+      padding-left: 32px;
+      font-size: 13px;
+    }
+
+    .content {
+      padding: 40px 56px 80px;
+      max-width: 1060px;
+    }
+
+    h1, h2, h3, h4 { color: var(--text-heading); font-weight: 800; }
+    h1 { font-size: 32px; margin-bottom: 12px; }
+    h2 { font-size: 22px; margin-top: 40px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 17px; margin-top: 24px; margin-bottom: 10px; }
+
+    p { margin-bottom: 18px; color: var(--text-body); font-size: 15px; }
+
+    .badge-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--accent-light);
+      color: var(--accent);
+      border: 1px solid rgba(79, 70, 229, 0.2);
+    }
+    .badge.emerald { background: #ecfdf5; color: #059669; border-color: rgba(5, 150, 105, 0.2); }
+    .badge.cyan { background: #f0f9ff; color: #0284c7; border-color: rgba(2, 132, 199, 0.2); }
+    .badge.purple { background: #faf5ff; color: #7c3aed; border-color: rgba(124, 58, 237, 0.2); }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 18px;
+      margin: 24px 0;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px var(--accent-glow);
+    }
+
+    .card-tag {
+      display: inline-block;
+      padding: 3px 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin: 24px 0;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--surface2);
+      padding: 12px 18px;
+      font-weight: 700;
+      color: var(--text-heading);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-body);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    pre {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin: 20px 0;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      color: #f8fafc;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: var(--accent-dark);
+      font-weight: 600;
+    }
+
+    pre code { background: transparent; padding: 0; color: #e2e8f0; font-weight: 400; }
+
+    .crypto-visual {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 24px;
+      margin: 24px 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    }
+
+    .crypto-pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .crypto-node {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      transition: all 0.2s;
+    }
+
+    .crypto-node:hover {
+      border-color: #7c3aed;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.05);
+    }
+
+    .crypto-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .icon-indigo { background: rgba(79, 70, 229, 0.1); color: #4f46e5; }
+    .icon-cyan { background: rgba(2, 132, 199, 0.1); color: #0284c7; }
+    .icon-emerald { background: rgba(5, 150, 105, 0.1); color: #059669; }
+
+    .crypto-content { flex: 1; }
+    .crypto-step-tag {
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #7c3aed;
+      margin-bottom: 2px;
+    }
+    .crypto-heading {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 3px;
+    }
+    .crypto-sub {
+      font-size: 12.5px;
+      color: #475569;
+      line-height: 1.4;
+    }
+    .crypto-code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .crypto-down-arrow {
+      text-align: center;
+      color: #7c3aed;
+      font-size: 18px;
+      margin: -6px 0;
+      opacity: 0.7;
+    }
+
+    .branch-box {
+      background: #fdf4ff;
+      border: 1px solid #f5d0fe;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin: 16px 0;
+    }
+    .branch-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #86198f;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .branch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .branch-item {
+      background: #ffffff;
+      border: 1px solid #f0abfc;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+    }
+    .branch-item strong {
+      color: #701a75;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .content { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <!-- NAVIGATION HEADER -->
+  <nav class="nav">
+    <a href="index.html" class="brand">
+      <div class="brand-icon">⚡</div>
+      <span>Veloctra</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="cdc.html" class="active">CDC</a></li>
+      <li><a href="sharding.html">Sharding</a></li>
+      <li><a href="setup.html">Quickstart</a></li>
+      <li><a href="usage.html">Studio & API</a></li>
+      <li><a href="examples.html">Examples</a></li>
+      <li>
+        <a href="https://github.com/vaagatech/veloctra-data-platform" target="_blank" class="github-btn">
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          <span>GitHub</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="container">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="menu-group">
+        <div class="menu-title">Platform Guides</div>
+        <a class="menu-item" href="index.html">🌟 Why Veloctra?</a>
+        <a class="menu-item" href="architecture.html">🏛️ System Architecture</a>
+        <a class="menu-item active menu-sub-item" href="cdc.html">🔄 Change Data Capture (CDC)</a>
+        <a class="menu-item" href="sharding.html">⚡ Process Sharding</a>
+        <a class="menu-item" href="use-cases.html">💼 Enterprise Use Cases</a>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-title">Getting Started</div>
+        <a class="menu-item" href="setup.html">🚀 Setup & Deployment</a>
+        <a class="menu-item" href="usage.html">📖 Usage & Studio UI</a>
+        <a class="menu-item" href="examples.html">🧪 Pipeline YAMLs</a>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-title">CDC Deep Dives</div>
+        <a class="menu-item" href="#architecture">📐 Dual Architecture</a>
+        <a class="menu-item" href="#modes">🌊 3 CDC Modes</a>
+        <a class="menu-item" href="#reconciliation">⚡ Vector Reconciliation</a>
+        <a class="menu-item" href="#comparison">📊 Capability Matrix</a>
+        <a class="menu-item" href="#governance">⚙️ Offset Governance</a>
+        <a class="menu-item" href="#yaml">🧪 YAML Configuration</a>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content">
+      <h1>🔄 Universal Change Data Capture (CDC) Architecture</h1>
+      <p>The <strong>Veloctra Data Platform</strong> features a unified Change Data Capture framework engineered for high-throughput, low-latency delta replication. It <strong>both implements its own vectorized delta and hash-diff engines in-app</strong> and <strong>integrates directly with native database oplogs and streaming brokers</strong> without relying on heavy external JVM middleware like Debezium.</p>
+
+      <div class="badge-bar">
+        <span class="badge emerald">⚡ In-App & Integrated CDC</span>
+        <span class="badge cyan">🔍 Zero-Column SHA-256 Hash Diff</span>
+        <span class="badge purple">📜 MongoDB Oplog Change Streams</span>
+        <span class="badge">🔄 SIMD Vector Batch Splitting</span>
+      </div>
+
+      <!-- DUAL ARCHITECTURE -->
+      <h2 id="architecture">📐 In-App Implementation vs. External Integration</h2>
+      <p>Veloctra addresses the classic data engineering dilemma by combining internal execution algorithms with open protocol integrations:</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div style="font-size: 20px; margin-bottom: 8px;">⚙️</div>
+          <h3 style="color: #4f46e5;">Implemented In-App</h3>
+          <p>Native Python / PyArrow algorithms running inside the execution pipeline:</p>
+          <ul style="padding-left: 18px; font-size: 13.5px; color: var(--text-body); line-height: 1.6;">
+            <li><code>ChecksumDiffCDC</code>: Zero-timestamp row checksum hash engine</li>
+            <li>Dynamic high-watermark filter rewrite & batch maximum tracking</li>
+            <li>Atomic chunk checkpointing in <code>StateStore</code> (SQLite / MongoDB)</li>
+            <li>Zero-copy SIMD batch splitting (Deletes vs Upserts)</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div style="font-size: 20px; margin-bottom: 8px;">🔌</div>
+          <h3 style="color: #0284c7;">Integrated with External Systems</h3>
+          <p>Native protocol listeners and target reconciliation engines:</p>
+          <ul style="padding-left: 18px; font-size: 13.5px; color: var(--text-body); line-height: 1.6;">
+            <li><code>MongoChangeStreamCDC</code>: MongoDB replica set oplog watcher</li>
+            <li>Streaming message queues: Kafka, RabbitMQ, SQS, Redis Streams</li>
+            <li>PostgreSQL & SQLite atomic <code>ON CONFLICT DO UPDATE</code> upserts</li>
+            <li>Target SQL <code>DELETE WHERE key = ?</code> batch execution</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 3 OPERATIONAL CDC MODES -->
+      <h2 id="modes">🌊 Three CDC Operational Modes</h2>
+
+      <div class="card-grid">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(79, 70, 229, 0.1); display: flex; align-items: center; justify-content: center; font-size: 18px;">🌊</div>
+            <h3 style="color: #4f46e5; margin: 0;">1. High-Watermark Delta Sync</h3>
+          </div>
+          <p>Designed for tables with modification timestamps (<code>updated_at</code>, <code>modified_ts</code>) or sequential IDs. Dynamically injects clauses into SQL and NoSQL extract queries and updates watermark checkpoints atomically per batch.</p>
+          <div>
+            <span class="card-tag">SQL & MongoDB</span>
+            <span class="card-tag">Atomic StateStore Checkpoints</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(2, 132, 199, 0.1); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔍</div>
+            <h3 style="color: #0284c7; margin: 0;">2. Checksum Hash-Diff CDC</h3>
+          </div>
+          <p>Built for legacy tables with <strong>zero timestamp columns, no triggers, and no replication stream access</strong>. Maintains persistent SHA-256 hash maps of non-key attributes to detect <code>INSERT</code>, <code>UPDATE</code>, and hard <code>DELETE</code> events.</p>
+          <div>
+            <span class="card-tag">Zero-Column / No-Timestamp</span>
+            <span class="card-tag">SHA-256 State Map</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(5, 150, 105, 0.1); display: flex; align-items: center; justify-content: center; font-size: 18px;">📜</div>
+            <h3 style="color: #059669; margin: 0;">3. MongoDB Change Streams</h3>
+          </div>
+          <p>Subscribes to MongoDB change streams (<code>coll.watch()</code>) with persistent <code>resume_after</code> tokens, consuming continuous CRUD change events and transforming them into vectorized PyArrow record batches.</p>
+          <div>
+            <span class="card-tag">MongoDB Oplog</span>
+            <span class="card-tag">Resume Tokens</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- VECTOR RECONCILIATION VISUAL -->
+      <h2 id="reconciliation">⚡ PyArrow Vector Reconciliation & SIMD Split Pipeline</h2>
+      <p>Veloctra standardizes all incoming change events into Apache Arrow <code>RecordBatch</code> schemas carrying unified CDC contract metadata (<code>_cdc_op</code>, <code>_cdc_ts</code>, <code>_cdc_key</code>). During the load phase, zero-copy SIMD filters split the stream for parallel destination routing:</p>
+
+      <div class="crypto-visual">
+        <div class="crypto-pipeline">
+          <div class="crypto-node">
+            <div class="crypto-icon icon-indigo">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 1 • Extraction & Delta Detection</div>
+              <div class="crypto-heading">Source Delta Extraction (Watermark, Checksum Diff, or Change Stream)</div>
+              <div class="crypto-sub">Extracts rows based on last committed watermark (<code>WHERE updated_at &gt; 'last_wm'</code>), compares full snapshot row hashes against stored state, or captures change streams from MongoDB oplogs.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-cyan">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 2 • Unified Vector Metadata Contract</div>
+              <div class="crypto-heading">Arrow Vector Batch Assembly (<span class="crypto-code">_cdc_op</span>, <span class="crypto-code">_cdc_ts</span>, <span class="crypto-code">_cdc_key</span>)</div>
+              <div class="crypto-sub">Injects columnar operation tags (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>), Unix epoch timestamps, and compound key strings into the memory-contiguous PyArrow batch.</div>
+            </div>
+          </div>
+
+          <div class="crypto-down-arrow">▼</div>
+
+          <div class="crypto-node">
+            <div class="crypto-icon icon-emerald">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="crypto-content">
+              <div class="crypto-step-tag">Phase 3 • SIMD Vector Split & Target Reconciliation</div>
+              <div class="crypto-heading">Dual-Channel Target Dispatch (Bulk Deletes vs Bulk Upserts)</div>
+              <div class="crypto-sub">
+                <code>pyarrow.compute.equal(_cdc_op, "DELETE")</code> partitions the chunk into:
+                <br/>• <strong>Deletes:</strong> Targeted <code>SQLConnector.bulk_delete()</code> using match keys.
+                <br/>• <strong>Upserts:</strong> High-speed <code>bulk_upsert()</code> with <code>ON CONFLICT (match_keys) DO UPDATE</code> or MongoDB <code>ReplaceOne(upsert=True)</code>.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CAPABILITY MATRIX -->
+      <h2 id="comparison">📊 Capability & Trade-Off Matrix</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>CDC Mode</th>
+              <th>Supported Databases</th>
+              <th>Prerequisites</th>
+              <th>Deletion Handling</th>
+              <th>Throughput Profile</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>High-Watermark Delta Sync</strong></td>
+              <td>PostgreSQL, MySQL, SQLite, MongoDB, Cassandra, DynamoDB</td>
+              <td>Timestamp or sequential integer column (e.g. <code>updated_at</code>, <code>id</code>)</td>
+              <td>Soft deletes (e.g. <code>is_deleted = true</code>)</td>
+              <td>⚡ 120,000+ rows/sec</td>
+            </tr>
+            <tr>
+              <td><strong>Checksum Hash-Diff CDC</strong></td>
+              <td>Any SQL / NoSQL table, CSV, Flat File without timestamps</td>
+              <td>Zero modifications. Works on legacy & read-only databases</td>
+              <td>Full hard deletes (missing key detection)</td>
+              <td>⚡ 50,000+ rows/sec (SHA-256 SIMD)</td>
+            </tr>
+            <tr>
+              <td><strong>MongoDB Change Streams / Oplog</strong></td>
+              <td>MongoDB Replica Sets / Atlas, Redis Streams, Kafka</td>
+              <td>Database change feed / oplog access</td>
+              <td>Full hard & soft deletes with change event flags</td>
+              <td>⚡ Real-time continuous (&lt; 50ms latency)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- OFFSET CONFLICT GOVERNANCE -->
+      <h2 id="governance">⚙️ Offset Governance & State Replay Policies</h2>
+      <p>When modifying a running CDC streaming pipeline, Veloctra enforces explicit offset conflict resolution through both the Studio UI and the REST API (<code>POST /pipelines/config</code>):</p>
+
+      <div class="branch-box">
+        <div class="branch-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+          <span>Available Offset Update Strategies</span>
+        </div>
+        <div class="branch-grid">
+          <div class="branch-item">
+            <strong>replay_from_start</strong>: Clears stored high-watermarks and state hash tables, initiating a full historical bulk backfill before switching to delta stream synchronization.
+          </div>
+          <div class="branch-item">
+            <strong>process_new_only</strong>: Preserves existing watermark checkpoints and hash tables, capturing only new transactions created after the modification point.
+          </div>
+        </div>
+      </div>
+
+      <!-- YAML SPECIFICATION -->
+      <h2 id="yaml">🧪 Production CDC Pipeline YAML Specification</h2>
+      <p>Below is a production-tested YAML definition demonstrating PostgreSQL-to-MongoDB delta streaming with high-watermark synchronization:</p>
+
+      <pre><code># ==============================================================================
+# Veloctra Data Platform — CDC Pipeline Configuration
+# Pipeline: PostgreSQL to MongoDB Claims Delta Stream
+# ==============================================================================
+
+pipeline_id: postgres_to_mongo_cdc
+project_id: healthcare_prod_workspace
+tenant_id: healthcare_prod_workspace
+version: 2
+description: "Streams incremental healthcare claims from PostgreSQL to MongoDB with automatic watermark tracking and zero data loss."
+
+settings:
+  chunk_size: 5000
+  max_memory_percent: 75.0
+  dlq_enabled: true
+  circuit_breaker_enabled: true
+
+# Source Configuration with Incremental Delta Sync
+sources:
+  - name: pg_healthcare_claims
+    type: database
+    connection_string: "enc:v1:..."
+    query: "SELECT * FROM raw_claim_benef"
+    chunk_size: 5000
+    delta:
+      watermark_column: updated_at
+      watermark_type: timestamp
+      initial_watermark: "2026-01-01T00:00:00"
+
+# Vectorized Schema Mappings & Column Renaming
+transformations:
+  - type: rename_field
+    field: desynpuf_id
+    new_name: BeneficiaryId
+
+  - type: rename_field
+    field: clm_id
+    new_name: ClaimId
+
+  - type: select_columns
+    columns:
+      - BeneficiaryId
+      - ClaimId
+      - updated_at
+
+# Destination Configuration with Idempotent Upserts
+destinations:
+  - name: mongo_claims_collection
+    type: nosql
+    db_type: mongodb
+    connection_string: "enc:v1:..."
+    database: healthcare_dw
+    collection: claim_beneficiaries
+    upsert_key: ClaimId
+    batch_size: 5000</code></pre>
+    </main>
+  </div>
+</body>
+</html>

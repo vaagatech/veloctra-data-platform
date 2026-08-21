@@ -146,3 +146,97 @@ The `MemoryGuard` protects the host system from out-of-memory crashes by maintai
 1. **Dynamic Chunk Resizing**: Calculates record byte density per batch. For huge multi-megabyte payloads, chunk size is reduced to **1 record per chunk**.
 2. **Resource Backpressure**: If RAM or CPU exceeds 75% or 85%, chunk sizes are halved and explicit Python Garbage Collection (`gc.collect()`) is triggered, reserving $\ge$25% headroom.
 
+---
+
+## 🔄 Universal Change Data Capture (CDC) Architecture
+
+Veloctra combines **native in-app CDC engines** with **external log-based stream integrations**, delivering real-time synchronization, zero-data-loss replication, and legacy database delta extraction without requiring external agents like Debezium.
+
+```mermaid
+flowchart TD
+    subgraph Sources ["1. Extraction & Change Detection"]
+        A["🌊 High-Watermark Delta Sync<br/>(SQL & NoSQL Timestamp/Sequence)"] --> D["⚡ PyArrow Vector Stream"]
+        B["🔍 ChecksumDiffCDC<br/>(Zero-Timestamp SHA-256 Hash Diff)"] --> D
+        C["📜 MongoChangeStreamCDC<br/>(MongoDB Oplog + Resume Tokens)"] --> D
+    end
+
+    subgraph CDC_Format ["2. Unified CDC Metadata Contract"]
+        D --> E["Injected Vector Columns:<br/>• _cdc_op: INSERT | UPDATE | DELETE<br/>• _cdc_ts: Epoch Timestamp<br/>• _cdc_key: Compound Primary Key"]
+    end
+
+    subgraph Sink ["3. Vector Split & Downstream Reconciliation"]
+        E --> F{"_cdc_op == 'DELETE'?"}
+        F -- "Yes (DELETE Batch)" --> G["🗑️ bulk_delete(match_keys)<br/>Target SQL DELETE WHERE key = ?"]
+        F -- "No (Upsert Batch)" --> H["📥 bulk_upsert / bulk_write<br/>SQL ON CONFLICT DO UPDATE / Mongo ReplaceOne(upsert=True)"]
+    end
+```
+
+### 1. Three CDC Operational Modes
+
+| Mode | Engine Class / Layer | Target Use Case | Mechanism |
+| :--- | :--- | :--- | :--- |
+| **High-Watermark Delta Sync** | `PipelineOrchestrator` & `StateStore` | SQL & NoSQL tables with `updated_at`, `modified_ts`, or auto-incrementing `id` | Injects `WHERE watermark_col > 'last_wm'` at extract time. Continuously computes `max(batch[watermark_col])` and atomically stores it with chunk checkpoints. |
+| **Snapshot Checksum Hash-Diff** | `ChecksumDiffCDC` (`cdc_engine.py`) | Legacy SQL / NoSQL tables with **no timestamps, no updated_at columns, and no replication stream access** | Computes deterministic SHA-256 hashes of non-key row attributes. Diffs incoming snapshots against cached state to emit `INSERT`, `UPDATE`, and `DELETE` events. |
+| **Oplog Change Stream CDC** | `MongoChangeStreamCDC` (`cdc_engine.py`) | Real-time MongoDB collections & NoSQL oplogs | Subscribes to MongoDB change streams (`coll.watch()`) using `resume_after` tokens, transforming CRUD events into vectorized PyArrow batches. |
+
+### 2. Checksum Hash-Diff CDC (`ChecksumDiffCDC`)
+
+For databases where schema modification is forbidden or timestamp triggers are missing:
+1. **Compound Key Resolution**: Combines primary key columns into a unique index key (`key_val = "101:US"`).
+2. **Row-Level SHA-256 Hash**: Computes a deterministic hash across all non-key fields:
+   $$\text{RowHash} = \text{SHA256}(\text{JSON}(\{k: v \mid k \notin \text{KeyColumns}\}))$$
+3. **Change Detection Logic**:
+   - **`INSERT`**: Key does not exist in the state map $\rightarrow$ Emit `_cdc_op = 'INSERT'`.
+   - **`UPDATE`**: Key exists but $\text{RowHash}_{\text{new}} \neq \text{RowHash}_{\text{old}} \rightarrow$ Emit `_cdc_op = 'UPDATE'`.
+   - **`DELETE`**: Key in previous state map missing from snapshot $\rightarrow$ Emit `_cdc_op = 'DELETE'` with cached key values.
+
+### 3. PyArrow Vector Batch Splitting & Downstream Reconciliation
+
+In the load phase (`PipelineOrchestrator._load`), incoming record batches containing `_cdc_op` metadata are split using zero-copy SIMD filters:
+
+```python
+# PyArrow Vectorized CDC Split
+op_col = target_batch["_cdc_op"]
+del_mask = pc.equal(op_col, "DELETE")
+cdc_delete_batch = target_batch.filter(del_mask)
+cdc_upsert_batch = target_batch.filter(pc.invert(del_mask))
+```
+
+- **Deletions (`cdc_delete_batch`)**: Dispatched to `SQLConnector.bulk_delete()` to execute parameterized `DELETE FROM table WHERE key1 = ? AND key2 = ?`.
+- **Upserts (`cdc_upsert_batch`)**: Internal `_cdc_*` metadata columns are stripped, and batches are passed to `bulk_upsert()` (`ON CONFLICT (match_keys) DO UPDATE SET ...`) or MongoDB `ReplaceOne(filter, record, upsert=True)`.
+
+### 4. Offset Governance & Replay Policies (UI & API)
+
+When updating active CDC pipeline configurations, the platform provides atomic offset conflict resolution via the API (`POST /pipelines/config`) and UI (`ConfigEditor.tsx`):
+- **`replay_from_start`**: Resets all stored high-watermarks and state hashes to `0` / empty, triggering a complete initial backfill before re-attaching the CDC delta stream.
+- **`process_new_only`**: Preserves existing high-watermarks and state checkpoints, seamlessly capturing only newly created or modified events going forward.
+
+### 5. Sample CDC Pipeline Configuration (YAML)
+
+```yaml
+pipeline_id: postgres_to_mongo_cdc
+tenant_id: healthcare_prod_workspace
+version: 2
+
+sources:
+  - name: pg_claims_cdc
+    type: database
+    connection_string: "enc:v1:..."
+    query: "SELECT * FROM raw_claims"
+    chunk_size: 5000
+    delta:
+      watermark_column: updated_at
+      watermark_type: timestamp
+      initial_watermark: "2026-01-01T00:00:00"
+
+destinations:
+  - name: mongo_claims_sink
+    type: nosql
+    db_type: mongodb
+    connection_string: "enc:v1:..."
+    database: analytics_dw
+    collection: claims
+    upsert_key: claim_id
+```
+
+
